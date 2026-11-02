@@ -1,13 +1,19 @@
 package ru.yandex.practicum.mymarket;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import ru.yandex.practicum.mymarket.config.DemoCatalogLoader;
 
-@SpringBootTest
-class MyMarketAppApplicationTests {
+import static org.assertj.core.api.Assertions.assertThat;
 
-	@Test
-	void contextLoads() {
-	}
+class MyMarketAppApplicationTests extends AbstractIntegrationTest {
 
+    @Autowired
+    private ApplicationContext context;
+
+    @Test
+    void contextLoads() {
+        assertThat(context.getBeanNamesForType(DemoCatalogLoader.class)).isEmpty();
+    }
 }
