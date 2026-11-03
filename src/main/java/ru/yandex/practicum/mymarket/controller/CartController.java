@@ -22,21 +22,19 @@ public class CartController {
 
     @GetMapping
     public String getCart(Model model) {
-        return renderCart(model);
-    }
-
-    @PostMapping
-    public String changeCartQuantity(@RequestParam long id,
-                                     @RequestParam CartAction action,
-                                     Model model) {
-        cartService.changeQuantity(id, action);
-        return renderCart(model);
-    }
-
-    private String renderCart(Model model) {
         CartDto cart = cartService.getCart();
         model.addAttribute("items", cart.items());
         model.addAttribute("total", cart.total());
         return "cart";
+    }
+
+    /**
+     * Post/Redirect/Get: после изменения корзины браузер перезапрашивает её через GET,
+     * поэтому обновление страницы не отправит форму повторно.
+     */
+    @PostMapping
+    public String changeCartQuantity(@RequestParam long id, @RequestParam CartAction action) {
+        cartService.changeQuantity(id, action);
+        return "redirect:/cart/items";
     }
 }

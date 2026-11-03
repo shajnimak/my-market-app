@@ -37,15 +37,18 @@
 | GET   | `/` или `/items?search=&sort=NO\|ALPHA\|PRICE&pageNumber=1&pageSize=5` | шаблон `items`                                   |
 | POST  | `/items?id=&action=PLUS\|MINUS&search=&sort=&pageNumber=&pageSize=` | редирект на `/items` с теми же параметрами         |
 | GET   | `/items/{id}`                                                    | шаблон `item`                                          |
-| POST  | `/items/{id}?action=PLUS\|MINUS`                                 | шаблон `item`                                          |
+| POST  | `/items/{id}?action=PLUS\|MINUS`                                 | редирект на `/items/{id}`                              |
 | GET   | `/cart/items`                                                    | шаблон `cart`                                          |
-| POST  | `/cart/items?id=&action=PLUS\|MINUS\|DELETE`                     | шаблон `cart`                                          |
+| POST  | `/cart/items?id=&action=PLUS\|MINUS\|DELETE`                     | редирект на `/cart/items`                              |
 | POST  | `/buy`                                                           | редирект на `/orders/{id}?newOrder=true`               |
 | GET   | `/orders`                                                        | шаблон `orders`                                        |
 | GET   | `/orders/{id}?newOrder=false`                                    | шаблон `order`                                         |
 | GET   | `/images/{itemId}`                                               | байты картинки товара                                  |
 | GET   | `/admin/items/new`                                               | форма добавления товара                                |
 | POST  | `/admin/items` (multipart: `title`, `description`, `price`, `image`) | редирект на `/items/{id}` нового товара            |
+
+Все POST-запросы, меняющие данные, отвечают редиректом (Post/Redirect/Get): обновление страницы
+в браузере не отправляет форму повторно и не меняет количество товара ещё раз.
 
 ## Структура проекта
 

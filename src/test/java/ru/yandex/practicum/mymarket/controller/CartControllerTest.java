@@ -9,12 +9,16 @@ import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
-import static org.mockito.Mockito.inOrder;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
@@ -44,17 +48,20 @@ class CartControllerTest extends AbstractControllerTest {
     }
 
     @Test
-    void changeCartQuantity_shouldApplyActionAndRenderUpdatedCart() throws Exception {
-        when(cartService.getCart()).thenReturn(new CartDto(List.of(), 0));
-
+    void changeCartQuantity_shouldApplyActionAndRedirectToCart() throws Exception {
         mockMvc.perform(post("/cart/items").param("id", "1").param("action", "DELETE"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("cart"))
-                .andExpect(model().attribute("items", List.of()))
-                .andExpect(model().attribute("total", 0L));
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/cart/items"));
 
-        var inOrder = inOrder(cartService);
-        inOrder.verify(cartService).changeQuantity(1, CartAction.DELETE);
-        inOrder.verify(cartService).getCart();
+        verify(cartService).changeQuantity(1, CartAction.DELETE);
+        verify(cartService, never()).getCart();
+    }
+
+    @Test
+    void changeCartQuantity_shouldReturnBadRequest_whenActionUnknown() throws Exception {
+        mockMvc.perform(post("/cart/items").param("id", "1").param("action", "TWICE"))
+                .andExpect(status().isBadRequest());
+
+        verify(cartService, never()).changeQuantity(anyLong(), any());
     }
 }

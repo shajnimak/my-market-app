@@ -127,14 +127,12 @@ class ItemControllerTest extends AbstractControllerTest {
     }
 
     @Test
-    void changeCartQuantityFromItem_shouldChangeCartAndRenderItemPage() throws Exception {
-        when(showcaseService.getItem(2)).thenReturn(RACKET);
-
+    void changeCartQuantityFromItem_shouldChangeCartAndRedirectToItemPage() throws Exception {
         mockMvc.perform(post("/items/2").param("action", "PLUS"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("item"))
-                .andExpect(model().attribute("item", RACKET));
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/items/2"));
 
         verify(cartService).changeQuantity(2, CartAction.PLUS);
+        verify(showcaseService, never()).getItem(anyLong());
     }
 }

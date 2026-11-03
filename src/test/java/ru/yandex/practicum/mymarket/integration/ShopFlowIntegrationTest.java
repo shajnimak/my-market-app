@@ -22,6 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -76,13 +77,19 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/items").param("id", String.valueOf(ballId)).param("action", "PLUS"))
                 .andExpect(status().is3xxRedirection());
         mockMvc.perform(post("/items/{id}", ballId).param("action", "PLUS"))
+                .andExpect(redirectedUrl("/items/" + ballId));
+        mockMvc.perform(get("/items/{id}", ballId))
                 .andExpect(model().attribute("item", itemWithCount(ballId, 2)));
         mockMvc.perform(post("/cart/items").param("id", String.valueOf(racketId)).param("action", "PLUS"))
+                .andExpect(redirectedUrl("/cart/items"));
+        mockMvc.perform(get("/cart/items"))
                 .andExpect(model().attribute("total", 2 * 2500L + 7800L));
 
-        mockMvc.perform(post("/cart/items").param("id", String.valueOf(ballId)).param("action", "MINUS"))
+        mockMvc.perform(post("/cart/items").param("id", String.valueOf(ballId)).param("action", "MINUS"));
+        mockMvc.perform(get("/cart/items"))
                 .andExpect(model().attribute("total", 2500L + 7800L));
-        mockMvc.perform(post("/cart/items").param("id", String.valueOf(racketId)).param("action", "DELETE"))
+        mockMvc.perform(post("/cart/items").param("id", String.valueOf(racketId)).param("action", "DELETE"));
+        mockMvc.perform(get("/cart/items"))
                 .andExpect(model().attribute("items", hasSize(1)))
                 .andExpect(model().attribute("total", 2500L));
 

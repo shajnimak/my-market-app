@@ -17,6 +17,9 @@ import ru.yandex.practicum.mymarket.service.ShowcaseService;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Витрина и карточка товара. Все POST-действия с корзиной завершаются редиректом (Post/Redirect/Get).
+ */
 @Controller
 public class ItemController {
 
@@ -67,12 +70,9 @@ public class ItemController {
     }
 
     @PostMapping("/items/{id}")
-    public String changeCartQuantityFromItem(@PathVariable long id,
-                                             @RequestParam CartAction action,
-                                             Model model) {
+    public String changeCartQuantityFromItem(@PathVariable long id, @RequestParam CartAction action) {
         cartService.changeQuantity(id, action);
-        model.addAttribute("item", showcaseService.getItem(id));
-        return "item";
+        return "redirect:/items/" + id;
     }
 
     private static List<List<ItemDto>> toRows(List<ItemDto> items) {
