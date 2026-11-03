@@ -64,12 +64,25 @@ src/main/java/ru/yandex/practicum/mymarket
 ├── model         # сущности Spring Data Relational Item, ItemImage, CartItem, Order, OrderItem;
 │                 # проекция CartLine; enum ItemSort, CartAction
 ├── repository    # реактивные репозитории R2dbcRepository (Mono/Flux)
-└── service       # ItemService, CartService, OrderService, PurchaseService (Mono/Flux)
+└── service       # ItemService, CartService, OrderService, PurchaseService, ShowcaseService (Mono/Flux)
 ```
 
 Слои взаимодействуют только сверху вниз: `controller → service → repository`. Контроллеры работают с DTO.
 Вся цепочка обработки запроса неблокирующая: контроллеры возвращают `Mono`, сервисы и репозитории — `Mono`/`Flux`,
 изменяющие методы сервисов помечены `@Transactional` и выполняются через `R2dbcTransactionManager`.
+
+Модули каталога (`ItemService`) и корзины (`CartService`) друг от друга не зависят. Витрину и карточку товара,
+где нужны и товары, и их количество в корзине, собирает фасад `ShowcaseService` уровнем выше.
+
+### Загрузка картинок
+
+- Формат картинки проверяется на сервере по сигнатуре первых байтов файла (`ImageFormat`): принимаются
+  только PNG, JPEG, GIF и WebP. Имя файла и Content-Type от браузера не учитываются, в базу сохраняется
+  тип, определённый сервером. SVG не принимается, так как может содержать скрипты.
+- `GET /images/{itemId}` отдаёт картинку с заголовками `Content-Disposition: attachment`,
+  `X-Content-Type-Options: nosniff` и `Content-Security-Policy: ... sandbox`. В `<img>` картинка
+  показывается как обычно, а при открытии по прямой ссылке браузер не исполнит активное содержимое
+  (это касается SVG из демо-каталога).
 
 Особенности перехода на реактивный стек:
 
@@ -141,8 +154,9 @@ docker build -t my-market-app .
 docker run --rm -p 8080:8080 my-market-app
 ```
 
-Образ собирается в два этапа: в первом Maven собирает executable JAR, во втором JAR запускается
-на `eclipse-temurin:21-jre` от непривилегированного пользователя во встроенном Netty. Приложение доступно на http://localhost:8080.
+Образ собирается в два этапа: в первом Maven прогоняет все тесты и собирает executable JAR, во втором JAR
+запускается на `eclipse-temurin:21-jre` от непривилегированного пользователя во встроенном Netty.
+Если тесты упали, образ не соберётся. Внешние сервисы для тестов не нужны — H2 работает в памяти. Приложение доступно на http://localhost:8080.
 
 > База данных H2 работает в памяти, поэтому корзина и заказы сбрасываются при перезапуске приложения.
 
@@ -176,3 +190,10 @@ docker run --rm -p 8080:8080 my-market-app
 - все `@SpringBootTest`-тесты наследуют `AbstractIntegrationTest` (одинаковые свойства и `@AutoConfigureWebTestClient`).
 
 В итоге на весь прогон поднимается три контекста.
+
+## Непрерывная интеграция
+
+GitHub Actions (`.github/workflows/ci.yml`) на каждый push в `main` и ветки спринтов и на каждый pull request
+в `main` запускает `./mvnw verify` (все тесты и сборка JAR) на JDK 21, а затем собирает Docker-образ.
+Зелёные тесты проверяются автоматически до публикации образа.
+
