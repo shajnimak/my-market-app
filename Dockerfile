@@ -6,7 +6,7 @@ RUN mvn -B -q dependency:go-offline
 COPY src src
 RUN mvn -B -q package -DskipTests
 
-# Запуск приложения во встроенном Tomcat
+# Запуск приложения во встроенном Netty
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 RUN useradd --system --uid 10001 market
