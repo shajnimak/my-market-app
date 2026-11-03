@@ -6,7 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
-import ru.yandex.practicum.mymarket.dto.ImageData;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.service.ItemService;
 
 import java.time.Duration;
@@ -21,11 +21,11 @@ public class ImageController {
     }
 
     @GetMapping("/images/{itemId}")
-    public ResponseEntity<byte[]> getImage(@PathVariable long itemId) {
-        ImageData image = itemService.getImage(itemId);
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(image.contentType()))
-                .cacheControl(CacheControl.maxAge(Duration.ofHours(1)))
-                .body(image.content());
+    public Mono<ResponseEntity<byte[]>> getImage(@PathVariable long itemId) {
+        return itemService.getImage(itemId)
+                .map(image -> ResponseEntity.ok()
+                        .contentType(MediaType.parseMediaType(image.contentType()))
+                        .cacheControl(CacheControl.maxAge(Duration.ofHours(1)))
+                        .body(image.content()));
     }
 }

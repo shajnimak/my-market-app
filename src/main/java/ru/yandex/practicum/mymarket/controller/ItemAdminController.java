@@ -1,19 +1,20 @@
 package ru.yandex.practicum.mymarket.controller;
 
 import jakarta.validation.Valid;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.multipart.MultipartFile;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.NewItem;
 import ru.yandex.practicum.mymarket.dto.NewItemForm;
 import ru.yandex.practicum.mymarket.service.ItemService;
-
-import java.io.IOException;
 
 /**
  * Добавление товаров на витрину через веб-форму.
@@ -34,24 +35,37 @@ public class ItemAdminController {
     }
 
     @PostMapping
-    public String createItem(@Valid @ModelAttribute("form") NewItemForm form,
-                             BindingResult bindingResult) throws IOException {
-        MultipartFile image = form.getImage();
-        if (image == null || image.isEmpty()) {
+    public Mono<String> createItem(@Valid @ModelAttribute("form") NewItemForm form,
+                                   BindingResult bindingResult) {
+        FilePart image = form.getImage();
+        MediaType contentType = image == null ? null : image.headers().getContentType();
+        if (image == null || image.filename().isBlank()) {
             bindingResult.rejectValue("image", "image.empty", "Выберите изображение товара");
-        } else if (image.getContentType() == null || !image.getContentType().startsWith("image/")) {
+        } else if (contentType == null || !"image".equals(contentType.getType())) {
             bindingResult.rejectValue("image", "image.type", "Файл должен быть изображением");
         }
         if (bindingResult.hasErrors()) {
-            return "new-item";
+            return Mono.just("new-item");
         }
 
-        long itemId = itemService.createItem(new NewItem(
-                form.getTitle().strip(),
-                form.getDescription().strip(),
-                form.getPrice(),
-                new ImageData(image.getContentType(), image.getBytes())
-        ));
-        return "redirect:/items/" + itemId;
+        return readBytes(image)
+                .flatMap(content -> itemService.createItem(new NewItem(
+                        form.getTitle().strip(),
+                        form.getDescription().strip(),
+                        form.getPrice(),
+                        new ImageData(contentType.toString(), content)
+                )))
+                .map(itemId -> "redirect:/items/" + itemId);
+    }
+
+    private static Mono<byte[]> readBytes(FilePart filePart) {
+        return DataBufferUtils.join(filePart.content())
+                .map(buffer -> {
+                    byte[] bytes = new byte[buffer.readableByteCount()];
+                    buffer.read(bytes);
+                    DataBufferUtils.release(buffer);
+                    return bytes;
+                })
+                .defaultIfEmpty(new byte[0]);
     }
 }
