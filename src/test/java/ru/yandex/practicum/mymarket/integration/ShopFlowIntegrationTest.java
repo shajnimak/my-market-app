@@ -11,6 +11,7 @@ import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.dto.OrderItemDto;
 import ru.yandex.practicum.mymarket.dto.Paging;
 import ru.yandex.practicum.mymarket.service.ItemService;
+import ru.yandex.practicum.mymarket.service.ShowcaseService;
 
 import java.util.List;
 
@@ -31,6 +32,9 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private ItemService itemService;
+
+    @Autowired
+    private ShowcaseService showcaseService;
 
     private long ballId;
     private long racketId;
@@ -120,7 +124,7 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     private ItemDto itemWithCount(long id, int count) {
-        ItemDto item = itemService.getItem(id);
+        ItemDto item = showcaseService.getItem(id);
         return new ItemDto(item.id(), item.title(), item.description(), item.imgPath(), item.price(), count);
     }
 }

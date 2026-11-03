@@ -8,6 +8,7 @@ import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ItemService;
 import ru.yandex.practicum.mymarket.service.OrderService;
 import ru.yandex.practicum.mymarket.service.PurchaseService;
+import ru.yandex.practicum.mymarket.service.ShowcaseService;
 
 /**
  * Общая конфигурация веб-слоя: все контроллеры и одинаковый набор моков сервисов,
@@ -21,6 +22,9 @@ public abstract class AbstractControllerTest {
 
     @MockitoBean
     protected ItemService itemService;
+
+    @MockitoBean
+    protected ShowcaseService showcaseService;
 
     @MockitoBean
     protected CartService cartService;

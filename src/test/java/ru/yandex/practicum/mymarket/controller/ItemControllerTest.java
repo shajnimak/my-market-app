@@ -34,7 +34,7 @@ class ItemControllerTest extends AbstractControllerTest {
     @Test
     void getItems_shouldUseDefaultsAndGroupItemsIntoRowsOfThree() throws Exception {
         Paging paging = new Paging(5, 1, false, true);
-        when(itemService.findItems("", ItemSort.NO, 1, 5))
+        when(showcaseService.findItems("", ItemSort.NO, 1, 5))
                 .thenReturn(new ItemsPage(List.of(BALL, RACKET, SKI, SKATES), paging));
 
         mockMvc.perform(get("/"))
@@ -53,7 +53,7 @@ class ItemControllerTest extends AbstractControllerTest {
     @Test
     void getItems_shouldPassRequestParametersToService() throws Exception {
         Paging paging = new Paging(10, 2, true, false);
-        when(itemService.findItems("мяч", ItemSort.PRICE, 2, 10))
+        when(showcaseService.findItems("мяч", ItemSort.PRICE, 2, 10))
                 .thenReturn(new ItemsPage(List.of(BALL), paging));
 
         mockMvc.perform(get("/items")
@@ -109,7 +109,7 @@ class ItemControllerTest extends AbstractControllerTest {
 
     @Test
     void getItem_shouldRenderItemPage() throws Exception {
-        when(itemService.getItem(2)).thenReturn(RACKET);
+        when(showcaseService.getItem(2)).thenReturn(RACKET);
 
         mockMvc.perform(get("/items/2"))
                 .andExpect(status().isOk())
@@ -120,7 +120,7 @@ class ItemControllerTest extends AbstractControllerTest {
 
     @Test
     void getItem_shouldReturnNotFound_whenItemMissing() throws Exception {
-        when(itemService.getItem(99)).thenThrow(new ItemNotFoundException(99));
+        when(showcaseService.getItem(99)).thenThrow(new ItemNotFoundException(99));
 
         mockMvc.perform(get("/items/99"))
                 .andExpect(status().isNotFound());
@@ -128,7 +128,7 @@ class ItemControllerTest extends AbstractControllerTest {
 
     @Test
     void changeCartQuantityFromItem_shouldChangeCartAndRenderItemPage() throws Exception {
-        when(itemService.getItem(2)).thenReturn(RACKET);
+        when(showcaseService.getItem(2)).thenReturn(RACKET);
 
         mockMvc.perform(post("/items/2").param("action", "PLUS"))
                 .andExpect(status().isOk())

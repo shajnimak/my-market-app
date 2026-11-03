@@ -12,7 +12,7 @@ import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.model.CartAction;
 import ru.yandex.practicum.mymarket.model.ItemSort;
 import ru.yandex.practicum.mymarket.service.CartService;
-import ru.yandex.practicum.mymarket.service.ItemService;
+import ru.yandex.practicum.mymarket.service.ShowcaseService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,11 +22,11 @@ public class ItemController {
 
     static final int ITEMS_PER_ROW = 3;
 
-    private final ItemService itemService;
+    private final ShowcaseService showcaseService;
     private final CartService cartService;
 
-    public ItemController(ItemService itemService, CartService cartService) {
-        this.itemService = itemService;
+    public ItemController(ShowcaseService showcaseService, CartService cartService) {
+        this.showcaseService = showcaseService;
         this.cartService = cartService;
     }
 
@@ -36,7 +36,7 @@ public class ItemController {
                            @RequestParam(defaultValue = "1") int pageNumber,
                            @RequestParam(defaultValue = "5") int pageSize,
                            Model model) {
-        ItemsPage page = itemService.findItems(search, sort, pageNumber, pageSize);
+        ItemsPage page = showcaseService.findItems(search, sort, pageNumber, pageSize);
         model.addAttribute("items", toRows(page.items()));
         model.addAttribute("search", search);
         model.addAttribute("sort", sort.name());
@@ -62,7 +62,7 @@ public class ItemController {
 
     @GetMapping("/items/{id}")
     public String getItem(@PathVariable long id, Model model) {
-        model.addAttribute("item", itemService.getItem(id));
+        model.addAttribute("item", showcaseService.getItem(id));
         return "item";
     }
 
@@ -71,7 +71,7 @@ public class ItemController {
                                              @RequestParam CartAction action,
                                              Model model) {
         cartService.changeQuantity(id, action);
-        model.addAttribute("item", itemService.getItem(id));
+        model.addAttribute("item", showcaseService.getItem(id));
         return "item";
     }
 

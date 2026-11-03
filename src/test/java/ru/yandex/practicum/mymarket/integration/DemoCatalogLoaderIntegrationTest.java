@@ -8,7 +8,6 @@ import org.springframework.core.io.ResourceLoader;
 import ru.yandex.practicum.mymarket.AbstractIntegrationTest;
 import ru.yandex.practicum.mymarket.config.DemoCatalogLoader;
 import ru.yandex.practicum.mymarket.dto.ImageData;
-import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.model.ItemSort;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 import ru.yandex.practicum.mymarket.service.ItemService;
@@ -40,8 +39,7 @@ class DemoCatalogLoaderIntegrationTest extends AbstractIntegrationTest {
         assertThat(loadedCount).isPositive();
         assertThat(itemRepository.count()).isEqualTo(loadedCount);
 
-        ItemsPage page = itemService.findItems("", ItemSort.NO, 1, 1);
-        long firstItemId = page.items().getFirst().id();
+        long firstItemId = itemService.findItems("", ItemSort.NO, 1, 1).getContent().getFirst().getId();
         ImageData image = itemService.getImage(firstItemId);
         assertThat(image.contentType()).isEqualTo("image/svg+xml");
         assertThat(image.content()).isNotEmpty();
