@@ -2,7 +2,6 @@ package ru.yandex.practicum.mymarket.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.http.MediaType;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
@@ -14,14 +13,20 @@ import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.NewItem;
 import ru.yandex.practicum.mymarket.dto.NewItemForm;
+import ru.yandex.practicum.mymarket.model.ImageFormat;
 import ru.yandex.practicum.mymarket.service.ItemService;
+
+import java.util.Optional;
 
 /**
  * Добавление товаров на витрину через веб-форму.
+ * Формат картинки проверяется по сигнатуре байтов, в базу сохраняется определённый сервером Content-Type.
  */
 @Controller
 @RequestMapping("/admin/items")
 public class ItemAdminController {
+
+    static final String UNSUPPORTED_FORMAT_MESSAGE = "Поддерживаются только изображения PNG, JPEG, GIF и WebP";
 
     private final ItemService itemService;
 
@@ -38,24 +43,25 @@ public class ItemAdminController {
     public Mono<String> createItem(@Valid @ModelAttribute("form") NewItemForm form,
                                    BindingResult bindingResult) {
         FilePart image = form.getImage();
-        MediaType contentType = image == null ? null : image.headers().getContentType();
-        if (image == null || image.filename().isBlank()) {
-            bindingResult.rejectValue("image", "image.empty", "Выберите изображение товара");
-        } else if (contentType == null || !"image".equals(contentType.getType())) {
-            bindingResult.rejectValue("image", "image.type", "Файл должен быть изображением");
-        }
-        if (bindingResult.hasErrors()) {
-            return Mono.just("new-item");
-        }
-
-        return readBytes(image)
-                .flatMap(content -> itemService.createItem(new NewItem(
-                        form.getTitle().strip(),
-                        form.getDescription().strip(),
-                        form.getPrice(),
-                        new ImageData(contentType.toString(), content)
-                )))
-                .map(itemId -> "redirect:/items/" + itemId);
+        Mono<byte[]> content = image == null ? Mono.just(new byte[0]) : readBytes(image);
+        return content.flatMap(bytes -> {
+            Optional<ImageFormat> format = ImageFormat.detect(bytes);
+            if (bytes.length == 0) {
+                bindingResult.rejectValue("image", "image.empty", "Выберите изображение товара");
+            } else if (format.isEmpty()) {
+                bindingResult.rejectValue("image", "image.format", UNSUPPORTED_FORMAT_MESSAGE);
+            }
+            if (bindingResult.hasErrors()) {
+                return Mono.just("new-item");
+            }
+            return itemService.createItem(new NewItem(
+                            form.getTitle().strip(),
+                            form.getDescription().strip(),
+                            form.getPrice(),
+                            new ImageData(format.get().getContentType(), bytes)
+                    ))
+                    .map(itemId -> "redirect:/items/" + itemId);
+        });
     }
 
     private static Mono<byte[]> readBytes(FilePart filePart) {

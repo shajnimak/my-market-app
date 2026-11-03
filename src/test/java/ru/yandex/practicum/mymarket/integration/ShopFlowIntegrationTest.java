@@ -27,6 +27,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ShopFlowIntegrationTest extends AbstractIntegrationTest {
 
+    private static final byte[] GIF_CONTENT = {'G', 'I', 'F', '8', '9', 'a', 1, 0, 1, 0};
+
     @Autowired
     private ItemService itemService;
 
@@ -136,7 +138,7 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
         builder.part("title", "Ласты");
         builder.part("description", "Для плавания");
         builder.part("price", "1800");
-        builder.part("image", new byte[]{9, 8}).filename("fins.png").contentType(MediaType.IMAGE_PNG);
+        builder.part("image", GIF_CONTENT).filename("fins.gif").contentType(MediaType.IMAGE_GIF);
 
         URI location = webTestClient.post().uri("/admin/items")
                 .body(BodyInserters.fromMultipartData(builder.build()))
@@ -151,7 +153,8 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
         webTestClient.get().uri(location.toString().replace("/items/", "/images/"))
                 .exchange()
                 .expectStatus().isOk()
-                .expectBody(byte[].class).isEqualTo(new byte[]{9, 8});
+                .expectHeader().contentType(MediaType.IMAGE_GIF)
+                .expectBody(byte[].class).isEqualTo(GIF_CONTENT);
     }
 
     private String getHtml(String uri) {
