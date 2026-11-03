@@ -80,13 +80,9 @@ public class CartService {
 
     private Mono<Void> decrease(long itemId) {
         return cartItemRepository.findByItemId(itemId)
-                .flatMap(cartItem -> {
-                    if (cartItem.getQuantity() > 1) {
-                        cartItem.decrement();
-                        return cartItemRepository.save(cartItem).then();
-                    }
-                    return cartItemRepository.delete(cartItem);
-                });
+                .flatMap(cartItem -> cartItem.decrement()
+                        ? cartItemRepository.save(cartItem).then()
+                        : cartItemRepository.delete(cartItem));
     }
 
     private static CartDto toCart(List<CartLine> cartLines) {
