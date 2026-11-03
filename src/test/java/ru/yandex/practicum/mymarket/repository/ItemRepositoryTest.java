@@ -3,69 +3,66 @@ package ru.yandex.practicum.mymarket.repository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.model.ItemSort;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import java.util.List;
 
-@DataJpaTest
-class ItemRepositoryTest {
-
-    @Autowired
-    private TestEntityManager entityManager;
+class ItemRepositoryTest extends AbstractRepositoryTest {
 
     @Autowired
     private ItemRepository itemRepository;
 
     @BeforeEach
     void setUp() {
-        entityManager.persist(new Item("Футбольный мяч", "Для игры на траве", 2500));
-        entityManager.persist(new Item("Ракетка", "Теннисная, для игры с МЯЧОМ", 7800));
-        entityManager.persist(new Item("Лыжи", "Беговые", 12900));
-        entityManager.persist(new Item("Баскетбольный мяч", "Для зала", 3200));
-        entityManager.flush();
+        itemRepository.saveAll(List.of(
+                new Item("Футбольный мяч", "Для игры на траве", 2500),
+                new Item("Ракетка", "Теннисная, для игры с МЯЧОМ", 7800),
+                new Item("Лыжи", "Беговые", 12900),
+                new Item("Баскетбольный мяч", "Для зала", 3200)
+        )).blockLast();
     }
 
     @Test
     void search_shouldMatchTitleOrDescriptionIgnoringCase() {
-        Page<Item> page = itemRepository.search("мяч", PageRequest.of(0, 10, ItemSort.ALPHA.toSort()));
-
-        assertThat(page.getContent())
-                .extracting(Item::getTitle)
-                .containsExactly("Баскетбольный мяч", "Ракетка", "Футбольный мяч");
+        StepVerifier.create(itemRepository.search("мяч", PageRequest.of(0, 10, ItemSort.ALPHA.toSort()))
+                        .map(Item::getTitle))
+                .expectNext("Баскетбольный мяч", "Ракетка", "Футбольный мяч")
+                .verifyComplete();
     }
 
     @Test
-    void search_shouldReturnEmptyPage_whenNothingMatches() {
-        Page<Item> page = itemRepository.search("велосипед", PageRequest.of(0, 10));
-
-        assertThat(page.getContent()).isEmpty();
-        assertThat(page.getTotalElements()).isZero();
+    void countSearch_shouldCountAllMatchesRegardlessOfPage() {
+        StepVerifier.create(itemRepository.countSearch("МЯЧ"))
+                .expectNext(3L)
+                .verifyComplete();
     }
 
     @Test
-    void findAll_shouldSortByPriceAndSplitIntoPages() {
-        Page<Item> firstPage = itemRepository.findAll(PageRequest.of(0, 3, ItemSort.PRICE.toSort()));
-        Page<Item> secondPage = itemRepository.findAll(PageRequest.of(1, 3, ItemSort.PRICE.toSort()));
-
-        assertThat(firstPage.getContent()).extracting(Item::getPrice).containsExactly(2500L, 3200L, 7800L);
-        assertThat(firstPage.hasNext()).isTrue();
-        assertThat(firstPage.hasPrevious()).isFalse();
-        assertThat(secondPage.getContent()).extracting(Item::getPrice).containsExactly(12900L);
-        assertThat(secondPage.hasNext()).isFalse();
-        assertThat(secondPage.hasPrevious()).isTrue();
+    void search_shouldReturnNothing_whenNothingMatches() {
+        StepVerifier.create(itemRepository.search("велосипед", PageRequest.of(0, 10)))
+                .verifyComplete();
+        StepVerifier.create(itemRepository.countSearch("велосипед"))
+                .expectNext(0L)
+                .verifyComplete();
     }
 
     @Test
-    void findAll_withoutSortType_shouldKeepInsertionOrder() {
-        Page<Item> page = itemRepository.findAll(PageRequest.of(0, 10, ItemSort.NO.toSort()));
+    void findAllBy_shouldSortByPriceAndSplitIntoPages() {
+        StepVerifier.create(itemRepository.findAllBy(PageRequest.of(0, 3, ItemSort.PRICE.toSort())).map(Item::getPrice))
+                .expectNext(2500L, 3200L, 7800L)
+                .verifyComplete();
+        StepVerifier.create(itemRepository.findAllBy(PageRequest.of(1, 3, ItemSort.PRICE.toSort())).map(Item::getPrice))
+                .expectNext(12900L)
+                .verifyComplete();
+    }
 
-        assertThat(page.getContent())
-                .extracting(Item::getTitle)
-                .containsExactly("Футбольный мяч", "Ракетка", "Лыжи", "Баскетбольный мяч");
+    @Test
+    void findAllBy_withoutSortType_shouldKeepInsertionOrder() {
+        StepVerifier.create(itemRepository.findAllBy(PageRequest.of(0, 10, ItemSort.NO.toSort())).map(Item::getTitle))
+                .expectNext("Футбольный мяч", "Ракетка", "Лыжи", "Баскетбольный мяч")
+                .verifyComplete();
     }
 }

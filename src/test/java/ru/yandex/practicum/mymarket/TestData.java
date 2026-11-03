@@ -2,6 +2,7 @@ package ru.yandex.practicum.mymarket;
 
 import org.springframework.test.util.ReflectionTestUtils;
 import ru.yandex.practicum.mymarket.model.CartItem;
+import ru.yandex.practicum.mymarket.model.CartLine;
 import ru.yandex.practicum.mymarket.model.Item;
 
 public final class TestData {
@@ -15,11 +16,15 @@ public final class TestData {
         return item;
     }
 
-    public static CartItem cartItem(Item item, int quantity) {
-        CartItem cartItem = new CartItem(item);
+    public static CartItem cartItem(long itemId, int quantity) {
+        CartItem cartItem = new CartItem(itemId);
         for (int i = 1; i < quantity; i++) {
             cartItem.increment();
         }
         return cartItem;
+    }
+
+    public static CartLine cartLine(Item item, int quantity) {
+        return new CartLine(item.getId(), item.getTitle(), item.getDescription(), item.getPrice(), quantity);
     }
 }
