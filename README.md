@@ -1,6 +1,6 @@
 # My Market App — витрина интернет-магазина
 
-Веб-приложение «Витрина интернет-магазина» на **Spring Boot** (блокирующий стек):
+Веб-приложение «Витрина интернет-магазина» на **Spring Boot** (реактивный стек: WebFlux + R2DBC):
 пользователь просматривает товары, складывает их в корзину, оформляет заказы и смотрит историю покупок.
 
 ## Технологии
@@ -8,11 +8,11 @@
 | Что                 | Чем                                                         |
 |---------------------|-------------------------------------------------------------|
 | Язык                | Java 21                                                     |
-| Фреймворк           | Spring Boot 3.5 (Spring Web MVC, встроенный Tomcat)         |
-| Шаблоны             | Thymeleaf + Bootstrap 5                                     |
-| Доступ к данным     | Spring Data JPA, Hibernate ORM                              |
-| База данных         | H2 (in-memory), схема — `src/main/resources/schema.sql`     |
-| Тесты               | JUnit 5, Mockito, Spring TestContext, `@SpringBootTest`, `@WebMvcTest`, `@DataJpaTest` |
+| Фреймворк           | Spring Boot 3.5 (Spring WebFlux, Project Reactor, встроенный Netty) |
+| Шаблоны             | Thymeleaf (reactive view resolver) + Bootstrap 5            |
+| Доступ к данным     | Spring Data R2DBC                                           |
+| База данных         | H2 (in-memory) через реактивный драйвер `r2dbc-h2`, схема — `src/main/resources/schema.sql` |
+| Тесты               | JUnit 5, Mockito, Reactor Test (`StepVerifier`), `@SpringBootTest`, `@WebFluxTest`, `@DataR2dbcTest`, `WebTestClient` |
 | Сборка              | Maven (Maven Wrapper), executable JAR                       |
 | Контейнеризация     | Docker (multi-stage build)                                  |
 
@@ -51,33 +51,54 @@
 
 ```
 src/main/java/ru/yandex/practicum/mymarket
-├── config        # Clock, загрузка демо-каталога
+├── config        # Clock, реактивная загрузка демо-каталога
 ├── controller    # ItemController, CartController, OrderController, PurchaseController,
-│                 # ImageController, ItemAdminController
-├── dto           # ItemDto, Paging, CartDto, OrderDto, OrderItemDto, ImageData, NewItem, NewItemForm
+│                 # ImageController, ItemAdminController — возвращают Mono<Rendering>/Mono<String>
+├── dto           # ItemDto, Paging, CartDto, OrderDto, OrderItemDto, ImageData, NewItem,
+│                 # формы NewItemForm, ItemsQuery, CartActionForm, CartItemActionForm
 ├── exception     # NotFoundException и наследники, EmptyCartException
 ├── mapper        # преобразование сущностей в DTO
-├── model         # JPA-сущности Item, ItemImage, CartItem, Order, OrderItem; enum ItemSort, CartAction
-├── repository    # Spring Data JPA репозитории
-└── service       # ItemService, CartService, OrderService, PurchaseService
+├── model         # сущности Spring Data Relational Item, ItemImage, CartItem, Order, OrderItem;
+│                 # проекция CartLine; enum ItemSort, CartAction
+├── repository    # реактивные репозитории R2dbcRepository (Mono/Flux)
+└── service       # ItemService, CartService, OrderService, PurchaseService (Mono/Flux)
 ```
 
-Слои взаимодействуют только сверху вниз: `controller → service → repository`. Контроллеры работают с DTO,
-сущности не выходят за пределы транзакций сервисов (`spring.jpa.open-in-view=false`).
+Слои взаимодействуют только сверху вниз: `controller → service → repository`. Контроллеры работают с DTO.
+Вся цепочка обработки запроса неблокирующая: контроллеры возвращают `Mono`, сервисы и репозитории — `Mono`/`Flux`,
+изменяющие методы сервисов помечены `@Transactional` и выполняются через `R2dbcTransactionManager`.
+
+Особенности перехода на реактивный стек:
+
+- R2DBC не поддерживает связи между сущностями, поэтому сущности хранят внешние ключи (`itemId`, `orderId`),
+  а связанные данные подгружаются явно: корзина — одним запросом с `join` в проекцию `CartLine`,
+  позиции всех заказов — одним запросом `findByOrderIdIn`.
+- У картинки товара первичный ключ равен id товара и не генерируется базой, поэтому `ItemImage`
+  реализует `Persistable` — так Spring Data отличает вставку от обновления.
+- В WebFlux `@RequestParam` не читает тело формы, поэтому данные форм привязываются через `@ModelAttribute`
+  к record-классам (`CartItemActionForm`, `ItemsQuery`), а картинка загружается как `FilePart`.
+- Шаблон страницы ошибки лежит в `templates/error/error.html` — там его ищет `ErrorWebExceptionHandler` WebFlux.
 
 ### Схема базы данных
 
 ```
 items (id, title, description, price)
-item_images (item_id PK/FK → items, content_type, content)      -- картинки отдельно от товаров
+item_images (item_id PK/FK → items, content_type, content)    -- картинки отдельно от товаров (varbinary)
 cart_items (id, item_id UNIQUE FK → items, quantity > 0)       -- корзина: одна строка на товар
 orders (id, created_at, total_sum)
 order_items (id, order_id FK → orders, item_id FK → items, title, price, quantity)
 ```
 
 В `order_items` название и цена товара копируются в момент покупки, поэтому оформленные заказы
-не меняются при последующем изменении товара. Схема создаётся скриптом `schema.sql`,
-Hibernate только проверяет соответствие сущностей схеме (`ddl-auto=validate`).
+не меняются при последующем изменении товара. Схема создаётся скриптом `schema.sql` при старте
+(`spring.sql.init.mode=always`, Spring Boot выполняет его через R2DBC-соединение).
+
+Подключение к базе настраивается в `application.properties`:
+
+```properties
+spring.r2dbc.url=r2dbc:h2:mem:///market?options=DB_CLOSE_DELAY=-1
+spring.r2dbc.username=sa
+```
 
 ## Требования
 
@@ -102,7 +123,7 @@ Maven устанавливать не обязательно — в проект
 java -jar target/my-market-app.jar
 ```
 
-Приложение будет доступно на http://localhost:8080. Порт можно поменять: `java -jar target/my-market-app.jar --server.port=9090`.
+Приложение запускается во встроенном Netty и будет доступно на http://localhost:8080. Порт можно поменять: `java -jar target/my-market-app.jar --server.port=9090`.
 
 Запуск без сборки JAR:
 
@@ -118,7 +139,7 @@ docker run --rm -p 8080:8080 my-market-app
 ```
 
 Образ собирается в два этапа: в первом Maven собирает executable JAR, во втором JAR запускается
-на `eclipse-temurin:21-jre` от непривилегированного пользователя. Приложение доступно на http://localhost:8080.
+на `eclipse-temurin:21-jre` от непривилегированного пользователя во встроенном Netty. Приложение доступно на http://localhost:8080.
 
 > База данных H2 работает в памяти, поэтому корзина и заказы сбрасываются при перезапуске приложения.
 
@@ -128,19 +149,27 @@ docker run --rm -p 8080:8080 my-market-app
 ./mvnw test
 ```
 
-| Уровень                 | Аннотация / инструмент              | Классы                                               |
-|-------------------------|-------------------------------------|------------------------------------------------------|
-| Доступ к данным         | `@DataJpaTest`                      | `repository/*RepositoryTest`                         |
-| Сервисы (модульные)     | JUnit 5 + Mockito                   | `service/*ServiceTest`                               |
-| Веб-слой                | `@WebMvcTest` + `MockMvc`           | `controller/*ControllerTest`                         |
-| Интеграционные          | `@SpringBootTest` + `MockMvc`       | `integration/*`, `MyMarketAppApplicationTests`       |
+Запуск одного класса или уровня тестов:
+
+```bash
+./mvnw test -Dtest='*ControllerTest'
+```
+
+| Уровень                 | Аннотация / инструмент                          | Классы                                               |
+|-------------------------|-------------------------------------------------|------------------------------------------------------|
+| Доступ к данным         | `@DataR2dbcTest` + `StepVerifier`               | `repository/*RepositoryTest`                         |
+| Сервисы (модульные)     | JUnit 5 + Mockito + `StepVerifier`              | `service/*ServiceTest`                               |
+| Веб-слой                | `@WebFluxTest` + `WebTestClient`                | `controller/*ControllerTest`                         |
+| Интеграционные          | `@SpringBootTest` + `WebTestClient`             | `integration/*`, `MyMarketAppApplicationTests`       |
+
+Реактивные транзакции не откатываются тестовым фреймворком автоматически, поэтому тесты с базой данных
+очищают таблицы перед каждым тестом (`TestDatabase.clean`).
 
 **Кеширование контекстов.** Тесты одного уровня имеют одинаковую конфигурацию, поэтому Spring TestContext
 создаёт контекст один раз и переиспользует его:
 
-- все `@WebMvcTest`-тесты наследуют `AbstractControllerTest` с общим набором `@MockitoBean`;
-- все `@SpringBootTest`-тесты наследуют `AbstractIntegrationTest` (одинаковые свойства, `@Transactional`
-  с откатом после каждого теста);
-- все `@DataJpaTest`-тесты используют одинаковую конфигурацию слайса.
+- все `@DataR2dbcTest`-тесты наследуют `AbstractRepositoryTest`;
+- все `@WebFluxTest`-тесты наследуют `AbstractControllerTest` с общим набором `@MockitoBean`;
+- все `@SpringBootTest`-тесты наследуют `AbstractIntegrationTest` (одинаковые свойства и `@AutoConfigureWebTestClient`).
 
 В итоге на весь прогон поднимается три контекста.
