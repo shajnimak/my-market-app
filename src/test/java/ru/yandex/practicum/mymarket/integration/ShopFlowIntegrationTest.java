@@ -16,6 +16,7 @@ import ru.yandex.practicum.mymarket.dto.OrderItemDto;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ItemService;
 import ru.yandex.practicum.mymarket.service.OrderService;
+import ru.yandex.practicum.mymarket.service.ShowcaseService;
 
 import java.net.URI;
 import java.util.List;
@@ -34,6 +35,9 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private CartService cartService;
+
+    @Autowired
+    private ShowcaseService showcaseService;
 
     @Autowired
     private OrderService orderService;
@@ -86,7 +90,7 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
                 .contains("Итого: 2500 руб.")
                 .doesNotContain("Ракетка");
 
-        StepVerifier.create(itemService.getItem(ballId).map(ItemDto::count))
+        StepVerifier.create(showcaseService.getItem(ballId).map(ItemDto::count))
                 .expectNext(1)
                 .verifyComplete();
         assertThat(getHtml("/items/" + ballId)).contains("<span>1</span>");

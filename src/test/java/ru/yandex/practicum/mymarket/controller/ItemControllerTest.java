@@ -29,7 +29,7 @@ class ItemControllerTest extends AbstractControllerTest {
 
     @Test
     void getItems_shouldUseDefaultsAndGroupItemsIntoRowsOfThree() {
-        when(itemService.findItems("", ItemSort.NO, 1, 5))
+        when(showcaseService.findItems("", ItemSort.NO, 1, 5))
                 .thenReturn(Mono.just(new ItemsPage(List.of(BALL, RACKET, SKI, SKATES), new Paging(5, 1, false, true))));
 
         String html = getHtml("/");
@@ -42,7 +42,7 @@ class ItemControllerTest extends AbstractControllerTest {
 
     @Test
     void getItems_shouldPassRequestParametersToService() {
-        when(itemService.findItems("мяч", ItemSort.PRICE, 2, 10))
+        when(showcaseService.findItems("мяч", ItemSort.PRICE, 2, 10))
                 .thenReturn(Mono.just(new ItemsPage(List.of(BALL), new Paging(10, 2, true, false))));
 
         String html = getHtml("/items?search=мяч&sort=PRICE&pageNumber=2&pageSize=10");
@@ -103,7 +103,7 @@ class ItemControllerTest extends AbstractControllerTest {
 
     @Test
     void getItem_shouldRenderItemPage() {
-        when(itemService.getItem(2)).thenReturn(Mono.just(RACKET));
+        when(showcaseService.getItem(2)).thenReturn(Mono.just(RACKET));
 
         String html = getHtml("/items/2");
 
@@ -112,7 +112,7 @@ class ItemControllerTest extends AbstractControllerTest {
 
     @Test
     void getItem_shouldReturnNotFound_whenItemMissing() {
-        when(itemService.getItem(99)).thenReturn(Mono.error(new ItemNotFoundException(99)));
+        when(showcaseService.getItem(99)).thenReturn(Mono.error(new ItemNotFoundException(99)));
 
         webTestClient.get().uri("/items/99")
                 .exchange()
@@ -122,7 +122,7 @@ class ItemControllerTest extends AbstractControllerTest {
     @Test
     void changeCartQuantityFromItem_shouldChangeCartAndRenderItemPage() {
         when(cartService.changeQuantity(2, CartAction.PLUS)).thenReturn(Mono.empty());
-        when(itemService.getItem(2)).thenReturn(Mono.just(RACKET));
+        when(showcaseService.getItem(2)).thenReturn(Mono.just(RACKET));
 
         webTestClient.post().uri("/items/2")
                 .body(BodyInserters.fromFormData("action", "PLUS"))
@@ -131,9 +131,9 @@ class ItemControllerTest extends AbstractControllerTest {
                 .expectBody(String.class)
                 .value(html -> assertThat(html).contains("Ракетка", "<span>2</span>"));
 
-        var inOrder = inOrder(cartService, itemService);
+        var inOrder = inOrder(cartService, showcaseService);
         inOrder.verify(cartService).changeQuantity(2, CartAction.PLUS);
-        inOrder.verify(itemService).getItem(2);
+        inOrder.verify(showcaseService).getItem(2);
     }
 
     @Test

@@ -43,7 +43,7 @@ class DemoCatalogLoaderIntegrationTest extends AbstractIntegrationTest {
                 .verifyComplete();
 
         StepVerifier.create(itemService.findItems("", ItemSort.NO, 1, 1)
-                        .flatMap(page -> itemService.getImage(page.items().getFirst().id())))
+                        .flatMap(page -> itemService.getImage(page.getContent().getFirst().getId())))
                 .assertNext(image -> {
                     assertThat(image.contentType()).isEqualTo("image/svg+xml");
                     assertThat(image.content()).isNotEmpty();

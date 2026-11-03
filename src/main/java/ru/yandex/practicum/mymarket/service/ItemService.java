@@ -1,5 +1,7 @@
 package ru.yandex.practicum.mymarket.service;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -8,21 +10,18 @@ import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ImageData;
-import ru.yandex.practicum.mymarket.dto.ItemDto;
-import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.dto.NewItem;
-import ru.yandex.practicum.mymarket.dto.Paging;
 import ru.yandex.practicum.mymarket.exception.ImageNotFoundException;
 import ru.yandex.practicum.mymarket.exception.ItemNotFoundException;
-import ru.yandex.practicum.mymarket.mapper.ItemMapper;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.model.ItemImage;
 import ru.yandex.practicum.mymarket.model.ItemSort;
 import ru.yandex.practicum.mymarket.repository.ItemImageRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
-import java.util.List;
-
+/**
+ * Каталог товаров: поиск, карточка, картинки и добавление товаров. Не зависит от корзины.
+ */
 @Service
 @Transactional(readOnly = true)
 public class ItemService {
@@ -31,17 +30,13 @@ public class ItemService {
 
     private final ItemRepository itemRepository;
     private final ItemImageRepository itemImageRepository;
-    private final CartService cartService;
 
-    public ItemService(ItemRepository itemRepository,
-                       ItemImageRepository itemImageRepository,
-                       CartService cartService) {
+    public ItemService(ItemRepository itemRepository, ItemImageRepository itemImageRepository) {
         this.itemRepository = itemRepository;
         this.itemImageRepository = itemImageRepository;
-        this.cartService = cartService;
     }
 
-    public Mono<ItemsPage> findItems(String search, ItemSort sort, int pageNumber, int pageSize) {
+    public Mono<Page<Item>> findItems(String search, ItemSort sort, int pageNumber, int pageSize) {
         int number = Math.max(pageNumber, 1);
         int size = Math.clamp(pageSize, 1, MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(number - 1, size, sort.toSort());
@@ -51,13 +46,12 @@ public class ItemService {
         Mono<Long> total = filtered ? itemRepository.countSearch(search.strip()) : itemRepository.count();
 
         return items.collectList()
-                .flatMap(pageItems -> total.flatMap(count -> toPage(pageItems, count, pageable)));
+                .flatMap(pageItems -> total.map(count -> new PageImpl<>(pageItems, pageable, count)));
     }
 
-    public Mono<ItemDto> getItem(long id) {
+    public Mono<Item> getItem(long id) {
         return itemRepository.findById(id)
-                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(id)))
-                .flatMap(item -> cartService.getCount(id).map(count -> ItemMapper.toDto(item, count)));
+                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(id)));
     }
 
     public Mono<ImageData> getImage(long itemId) {
@@ -77,20 +71,5 @@ public class ItemService {
                 .flatMap(item -> itemImageRepository
                         .save(ItemImage.newImage(item.getId(), image.contentType(), image.content()))
                         .thenReturn(item.getId()));
-    }
-
-    private Mono<ItemsPage> toPage(List<Item> items, long total, Pageable pageable) {
-        List<Long> ids = items.stream().map(Item::getId).toList();
-        Paging paging = new Paging(
-                pageable.getPageSize(),
-                pageable.getPageNumber() + 1,
-                pageable.hasPrevious(),
-                pageable.getOffset() + items.size() < total
-        );
-        return cartService.getCounts(ids)
-                .map(counts -> items.stream()
-                        .map(item -> ItemMapper.toDto(item, counts.getOrDefault(item.getId(), 0)))
-                        .toList())
-                .map(dtos -> new ItemsPage(dtos, paging));
     }
 }

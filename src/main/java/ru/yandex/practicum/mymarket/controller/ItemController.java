@@ -14,7 +14,7 @@ import ru.yandex.practicum.mymarket.dto.CartItemActionForm;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsQuery;
 import ru.yandex.practicum.mymarket.service.CartService;
-import ru.yandex.practicum.mymarket.service.ItemService;
+import ru.yandex.practicum.mymarket.service.ShowcaseService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,17 +24,17 @@ public class ItemController {
 
     static final int ITEMS_PER_ROW = 3;
 
-    private final ItemService itemService;
+    private final ShowcaseService showcaseService;
     private final CartService cartService;
 
-    public ItemController(ItemService itemService, CartService cartService) {
-        this.itemService = itemService;
+    public ItemController(ShowcaseService showcaseService, CartService cartService) {
+        this.showcaseService = showcaseService;
         this.cartService = cartService;
     }
 
     @GetMapping({"/", "/items"})
     public Mono<Rendering> getItems(@ModelAttribute ItemsQuery query) {
-        return itemService.findItems(query.search(), query.sort(), query.pageNumber(), query.pageSize())
+        return showcaseService.findItems(query.search(), query.sort(), query.pageNumber(), query.pageSize())
                 .map(page -> Rendering.view("items")
                         .modelAttribute("items", toRows(page.items()))
                         .modelAttribute("search", query.search())
@@ -52,14 +52,14 @@ public class ItemController {
 
     @GetMapping("/items/{id}")
     public Mono<Rendering> getItem(@PathVariable long id) {
-        return itemService.getItem(id).map(ItemController::renderItem);
+        return showcaseService.getItem(id).map(ItemController::renderItem);
     }
 
     @PostMapping("/items/{id}")
     public Mono<Rendering> changeCartQuantityFromItem(@PathVariable long id,
                                                       @Valid @ModelAttribute CartActionForm form) {
         return cartService.changeQuantity(id, form.action())
-                .then(Mono.defer(() -> itemService.getItem(id)))
+                .then(Mono.defer(() -> showcaseService.getItem(id)))
                 .map(ItemController::renderItem);
     }
 
