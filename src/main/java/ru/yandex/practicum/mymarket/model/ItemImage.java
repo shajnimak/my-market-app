@@ -1,36 +1,50 @@
 package ru.yandex.practicum.mymarket.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
-import jakarta.persistence.Table;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.domain.Persistable;
+import org.springframework.data.relational.core.mapping.Table;
 
 /**
  * Картинка товара. Хранится отдельно от {@link Item}, чтобы не загружать байты при выводе витрины.
+ * Идентификатор совпадает с id товара и не генерируется базой, поэтому новизну записи
+ * для Spring Data определяет флаг {@link #isNew()}.
  */
-@Entity
-@Table(name = "item_images")
-public class ItemImage {
+@Table("item_images")
+public class ItemImage implements Persistable<Long> {
 
     @Id
-    @Column(name = "item_id")
     private Long itemId;
 
-    @Column(name = "content_type", nullable = false, length = 100)
     private String contentType;
 
-    @Lob
-    @Column(nullable = false)
     private byte[] content;
+
+    @Transient
+    private boolean newImage;
 
     protected ItemImage() {
     }
 
-    public ItemImage(Long itemId, String contentType, byte[] content) {
+    private ItemImage(Long itemId, String contentType, byte[] content) {
         this.itemId = itemId;
         this.contentType = contentType;
         this.content = content;
+        this.newImage = true;
+    }
+
+    public static ItemImage newImage(Long itemId, String contentType, byte[] content) {
+        return new ItemImage(itemId, contentType, content);
+    }
+
+    @Override
+    public Long getId() {
+        return itemId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return newImage;
     }
 
     public Long getItemId() {
