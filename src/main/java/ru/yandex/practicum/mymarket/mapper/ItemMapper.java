@@ -1,6 +1,7 @@
 package ru.yandex.practicum.mymarket.mapper;
 
 import ru.yandex.practicum.mymarket.dto.ItemDto;
+import ru.yandex.practicum.mymarket.model.CartLine;
 import ru.yandex.practicum.mymarket.model.Item;
 
 public final class ItemMapper {
@@ -16,6 +17,17 @@ public final class ItemMapper {
                 imagePath(item.getId()),
                 item.getPrice(),
                 count
+        );
+    }
+
+    public static ItemDto toDto(CartLine cartLine) {
+        return new ItemDto(
+                cartLine.itemId(),
+                cartLine.title(),
+                cartLine.description(),
+                imagePath(cartLine.itemId()),
+                cartLine.price(),
+                cartLine.quantity()
         );
     }
 
