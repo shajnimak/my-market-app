@@ -10,7 +10,7 @@ create table if not exists item_images
 (
     item_id      bigint       primary key references items (id) on delete cascade,
     content_type varchar(100) not null,
-    content      blob         not null
+    content      varbinary    not null
 );
 
 create table if not exists cart_items
