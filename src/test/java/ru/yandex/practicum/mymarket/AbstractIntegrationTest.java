@@ -1,21 +1,29 @@
 package ru.yandex.practicum.mymarket;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.r2dbc.core.DatabaseClient;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
 /**
  * Базовый класс интеграционных тестов. Конфигурация одинакова для всех наследников,
  * поэтому контекст приложения поднимается один раз и берётся из кеша.
- * Каждый тест выполняется в транзакции, которая откатывается после теста.
+ * Перед каждым тестом таблицы очищаются: реактивные транзакции не откатываются тестовым фреймворком.
  */
 @SpringBootTest(properties = "market.demo-data.enabled=false")
-@AutoConfigureMockMvc
-@Transactional
+@AutoConfigureWebTestClient
 public abstract class AbstractIntegrationTest {
 
     @Autowired
-    protected MockMvc mockMvc;
+    protected WebTestClient webTestClient;
+
+    @Autowired
+    protected DatabaseClient databaseClient;
+
+    @BeforeEach
+    void cleanDatabase() {
+        TestDatabase.clean(databaseClient).block();
+    }
 }

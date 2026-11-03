@@ -3,34 +3,38 @@ package ru.yandex.practicum.mymarket.integration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.web.reactive.function.BodyInserters;
+import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.AbstractIntegrationTest;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.NewItem;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.dto.OrderItemDto;
-import ru.yandex.practicum.mymarket.dto.Paging;
+import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ItemService;
+import ru.yandex.practicum.mymarket.service.OrderService;
 
+import java.net.URI;
 import java.util.List;
 
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.hasSize;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Сквозной сценарий: витрина → корзина → покупка → заказы.
+ * Сквозной сценарий через HTTP: витрина → корзина → покупка → заказы.
  */
 class ShopFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private ItemService itemService;
+
+    @Autowired
+    private CartService cartService;
+
+    @Autowired
+    private OrderService orderService;
 
     private long ballId;
     private long racketId;
@@ -39,88 +43,137 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
     @BeforeEach
     void setUp() {
         ImageData image = new ImageData("image/png", new byte[]{1, 2, 3});
-        ballId = itemService.createItem(new NewItem("Футбольный мяч", "Размер 5", 2500, image));
-        racketId = itemService.createItem(new NewItem("Ракетка", "Теннисная", 7800, image));
-        basketballId = itemService.createItem(new NewItem("Баскетбольный мяч", "Для зала", 3200, image));
+        ballId = itemService.createItem(new NewItem("Футбольный мяч", "Размер 5", 2500, image)).block();
+        racketId = itemService.createItem(new NewItem("Ракетка", "Теннисная", 7800, image)).block();
+        basketballId = itemService.createItem(new NewItem("Баскетбольный мяч", "Для зала", 3200, image)).block();
     }
 
     @Test
-    void itemsPage_shouldFilterSortAndPaginate() throws Exception {
-        mockMvc.perform(get("/items")
-                        .param("search", "МЯЧ")
-                        .param("sort", "PRICE")
-                        .param("pageSize", "1")
-                        .param("pageNumber", "2"))
-                .andExpect(status().isOk())
-                .andExpect(model().attribute("paging", new Paging(1, 2, true, false)))
-                .andExpect(model().attribute("items", contains(contains(
-                        new ItemDto(basketballId, "Баскетбольный мяч", "Для зала", "images/" + basketballId, 3200, 0),
-                        ItemDto.placeholder(),
-                        ItemDto.placeholder()))));
+    void itemsPage_shouldFilterSortAndPaginate() {
+        String html = getHtml("/items?search=МЯЧ&sort=PRICE&pageSize=1&pageNumber=2");
+
+        assertThat(html).contains("Баскетбольный мяч", "Страница: 2", "href=\"/items/" + basketballId + "\"")
+                .doesNotContain("Футбольный мяч")
+                .doesNotContain("Ракетка")
+                .contains("name=\"pageNumber\" value=\"1\"")
+                .doesNotContain("name=\"pageNumber\" value=\"3\"");
     }
 
     @Test
-    void imageEndpoint_shouldServeStoredImage() throws Exception {
-        mockMvc.perform(get("/images/{id}", ballId))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType("image/png"))
-                .andExpect(content().bytes(new byte[]{1, 2, 3}));
+    void imageEndpoint_shouldServeStoredImage() {
+        webTestClient.get().uri("/images/{id}", ballId)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentType(MediaType.IMAGE_PNG)
+                .expectBody(byte[].class).isEqualTo(new byte[]{1, 2, 3});
     }
 
     @Test
-    void cart_shouldReflectChangesFromAllPages() throws Exception {
-        mockMvc.perform(post("/items").param("id", String.valueOf(ballId)).param("action", "PLUS"))
-                .andExpect(status().is3xxRedirection());
-        mockMvc.perform(post("/items/{id}", ballId).param("action", "PLUS"))
-                .andExpect(model().attribute("item", itemWithCount(ballId, 2)));
-        mockMvc.perform(post("/cart/items").param("id", String.valueOf(racketId)).param("action", "PLUS"))
-                .andExpect(model().attribute("total", 2 * 2500L + 7800L));
+    void cart_shouldReflectChangesFromAllPages() {
+        webTestClient.post().uri("/items")
+                .body(BodyInserters.fromFormData("id", String.valueOf(ballId)).with("action", "PLUS"))
+                .exchange()
+                .expectStatus().isSeeOther();
+        postForm("/items/" + ballId, "action", "PLUS");
+        assertThat(postForm("/cart/items", "id", String.valueOf(racketId), "action", "PLUS"))
+                .contains("Итого: " + (2 * 2500 + 7800) + " руб.");
 
-        mockMvc.perform(post("/cart/items").param("id", String.valueOf(ballId)).param("action", "MINUS"))
-                .andExpect(model().attribute("total", 2500L + 7800L));
-        mockMvc.perform(post("/cart/items").param("id", String.valueOf(racketId)).param("action", "DELETE"))
-                .andExpect(model().attribute("items", hasSize(1)))
-                .andExpect(model().attribute("total", 2500L));
+        assertThat(postForm("/cart/items", "id", String.valueOf(ballId), "action", "MINUS"))
+                .contains("Итого: " + (2500 + 7800) + " руб.");
+        assertThat(postForm("/cart/items", "id", String.valueOf(racketId), "action", "DELETE"))
+                .contains("Итого: 2500 руб.")
+                .doesNotContain("Ракетка");
 
-        mockMvc.perform(get("/items/{id}", ballId))
-                .andExpect(model().attribute("item", itemWithCount(ballId, 1)));
+        StepVerifier.create(itemService.getItem(ballId).map(ItemDto::count))
+                .expectNext(1)
+                .verifyComplete();
+        assertThat(getHtml("/items/" + ballId)).contains("<span>1</span>");
     }
 
     @Test
-    void buy_shouldCreateOrderFromCartAndEmptyCart() throws Exception {
-        mockMvc.perform(post("/items/{id}", ballId).param("action", "PLUS"));
-        mockMvc.perform(post("/items/{id}", ballId).param("action", "PLUS"));
-        mockMvc.perform(post("/items/{id}", racketId).param("action", "PLUS"));
+    void buy_shouldCreateOrderFromCartAndEmptyCart() {
+        postForm("/items/" + ballId, "action", "PLUS");
+        postForm("/items/" + ballId, "action", "PLUS");
+        postForm("/items/" + racketId, "action", "PLUS");
 
-        String location = mockMvc.perform(post("/buy"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("/orders/*?newOrder=true"))
-                .andReturn().getResponse().getRedirectedUrl();
-        long orderId = Long.parseLong(location.substring("/orders/".length(), location.indexOf('?')));
+        URI location = webTestClient.post().uri("/buy")
+                .exchange()
+                .expectStatus().isSeeOther()
+                .returnResult(Void.class)
+                .getResponseHeaders()
+                .getLocation();
+        assertThat(location).isNotNull();
+        assertThat(location.getQuery()).isEqualTo("newOrder=true");
+        long orderId = Long.parseLong(location.getPath().substring("/orders/".length()));
 
         OrderDto expectedOrder = new OrderDto(orderId, List.of(
                 new OrderItemDto(ballId, "Футбольный мяч", 2500, 2),
                 new OrderItemDto(racketId, "Ракетка", 7800, 1)
         ), 12800);
-        mockMvc.perform(get(location))
-                .andExpect(status().isOk())
-                .andExpect(model().attribute("order", expectedOrder))
-                .andExpect(model().attribute("newOrder", true));
-        mockMvc.perform(get("/orders"))
-                .andExpect(model().attribute("orders", hasItem(expectedOrder)));
-        mockMvc.perform(get("/cart/items"))
-                .andExpect(model().attribute("items", hasSize(0)))
-                .andExpect(model().attribute("total", 0L));
+        StepVerifier.create(orderService.getOrder(orderId))
+                .expectNext(expectedOrder)
+                .verifyComplete();
+        assertThat(getHtml(location.toString())).contains("Поздравляем", "Заказ №" + orderId, "Сумма: 12800 руб.");
+        assertThat(getHtml("/orders")).contains("href=\"/orders/" + orderId + "\"", "Футбольный мяч (2 шт.) 5000 руб.");
+        StepVerifier.create(cartService.getCart())
+                .assertNext(cart -> {
+                    assertThat(cart.items()).isEmpty();
+                    assertThat(cart.total()).isZero();
+                })
+                .verifyComplete();
     }
 
     @Test
-    void buy_shouldFail_whenCartEmpty() throws Exception {
-        mockMvc.perform(post("/buy"))
-                .andExpect(status().isBadRequest());
+    void buy_shouldFail_whenCartEmpty() {
+        webTestClient.post().uri("/buy")
+                .exchange()
+                .expectStatus().isBadRequest();
     }
 
-    private ItemDto itemWithCount(long id, int count) {
-        ItemDto item = itemService.getItem(id);
-        return new ItemDto(item.id(), item.title(), item.description(), item.imgPath(), item.price(), count);
+    @Test
+    void addItemForm_shouldCreateItemWithImage() {
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("title", "Ласты");
+        builder.part("description", "Для плавания");
+        builder.part("price", "1800");
+        builder.part("image", new byte[]{9, 8}).filename("fins.png").contentType(MediaType.IMAGE_PNG);
+
+        URI location = webTestClient.post().uri("/admin/items")
+                .body(BodyInserters.fromMultipartData(builder.build()))
+                .exchange()
+                .expectStatus().isSeeOther()
+                .returnResult(Void.class)
+                .getResponseHeaders()
+                .getLocation();
+
+        assertThat(location).isNotNull();
+        assertThat(getHtml(location.toString())).contains("Ласты", "1800 руб.");
+        webTestClient.get().uri(location.toString().replace("/items/", "/images/"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(byte[].class).isEqualTo(new byte[]{9, 8});
+    }
+
+    private String getHtml(String uri) {
+        return webTestClient.get().uri(uri)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .returnResult()
+                .getResponseBody();
+    }
+
+    private String postForm(String uri, String... keysAndValues) {
+        var form = BodyInserters.fromFormData(keysAndValues[0], keysAndValues[1]);
+        for (int i = 2; i < keysAndValues.length; i += 2) {
+            form = form.with(keysAndValues[i], keysAndValues[i + 1]);
+        }
+        return webTestClient.post().uri(uri)
+                .body(form)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .returnResult()
+                .getResponseBody();
     }
 }
