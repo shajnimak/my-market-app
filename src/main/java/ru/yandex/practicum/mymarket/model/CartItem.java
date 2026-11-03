@@ -37,11 +37,18 @@ public class CartItem {
         quantity++;
     }
 
-    public void decrement() {
-        if (quantity <= 1) {
-            throw new IllegalStateException("Quantity of the cart item can't be less than 1");
+    /**
+     * Уменьшает количество на единицу. Количество позиции корзины не бывает меньше 1,
+     * поэтому последняя единица не вычитается: позицию нужно удалить из корзины.
+     *
+     * @return {@code false}, если осталась последняя единица и количество не изменилось
+     */
+    public boolean decrement() {
+        if (quantity == 1) {
+            return false;
         }
         quantity--;
+        return true;
     }
 
     public long getTotalPrice() {

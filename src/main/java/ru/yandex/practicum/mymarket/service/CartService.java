@@ -82,12 +82,8 @@ public class CartService {
     }
 
     private void decrease(long itemId) {
-        cartItemRepository.findByItemId(itemId).ifPresent(cartItem -> {
-            if (cartItem.getQuantity() > 1) {
-                cartItem.decrement();
-            } else {
-                cartItemRepository.delete(cartItem);
-            }
-        });
+        cartItemRepository.findByItemId(itemId)
+                .filter(cartItem -> !cartItem.decrement())
+                .ifPresent(cartItemRepository::delete);
     }
 }
