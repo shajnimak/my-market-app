@@ -1,10 +1,11 @@
-# Сборка executable JAR
+# Сборка executable JAR. Тесты выполняются прямо здесь: база H2 работает в памяти,
+# внешние зависимости не нужны, а образ с упавшими тестами не соберётся.
 FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 COPY src src
-RUN mvn -B -q package -DskipTests
+RUN mvn -B package
 
 # Запуск приложения во встроенном Tomcat
 FROM eclipse-temurin:21-jre
