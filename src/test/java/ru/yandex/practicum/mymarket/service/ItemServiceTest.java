@@ -6,9 +6,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
@@ -24,11 +27,10 @@ import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -56,88 +58,123 @@ class ItemServiceTest {
     @Test
     void findItems_withoutSearch_shouldReturnPageWithCartCounts() {
         Pageable pageable = PageRequest.of(1, 2, ItemSort.PRICE.toSort());
-        when(itemRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(ball, racket), pageable, 5));
-        when(cartService.getCounts(List.of(1L, 2L))).thenReturn(Map.of(2L, 3));
+        when(itemRepository.findAllBy(pageable)).thenReturn(Flux.just(ball, racket));
+        when(itemRepository.count()).thenReturn(Mono.just(5L));
+        when(cartService.getCounts(List.of(1L, 2L))).thenReturn(Mono.just(Map.of(2L, 3)));
 
-        ItemsPage page = itemService.findItems("  ", ItemSort.PRICE, 2, 2);
+        StepVerifier.create(itemService.findItems("  ", ItemSort.PRICE, 2, 2))
+                .assertNext(page -> {
+                    assertThat(page.items()).containsExactly(
+                            new ItemDto(1, "Мяч", "Описание Мяч", "images/1", 2500, 0),
+                            new ItemDto(2, "Ракетка", "Описание Ракетка", "images/2", 7800, 3)
+                    );
+                    assertThat(page.paging()).isEqualTo(new Paging(2, 2, true, true));
+                })
+                .verifyComplete();
 
-        assertThat(page.items()).containsExactly(
-                new ItemDto(1, "Мяч", "Описание Мяч", "images/1", 2500, 0),
-                new ItemDto(2, "Ракетка", "Описание Ракетка", "images/2", 7800, 3)
-        );
-        assertThat(page.paging()).isEqualTo(new Paging(2, 2, true, true));
         verify(itemRepository, never()).search(anyString(), any());
     }
 
     @Test
     void findItems_withSearch_shouldSearchByStrippedString() {
         Pageable pageable = PageRequest.of(0, 5, ItemSort.NO.toSort());
-        when(itemRepository.search("мяч", pageable)).thenReturn(new PageImpl<>(List.of(ball), pageable, 1));
-        when(cartService.getCounts(List.of(1L))).thenReturn(Map.of());
+        when(itemRepository.search("мяч", pageable)).thenReturn(Flux.just(ball));
+        when(itemRepository.countSearch("мяч")).thenReturn(Mono.just(1L));
+        when(cartService.getCounts(List.of(1L))).thenReturn(Mono.just(Map.of()));
 
-        ItemsPage page = itemService.findItems(" мяч ", ItemSort.NO, 1, 5);
+        StepVerifier.create(itemService.findItems(" мяч ", ItemSort.NO, 1, 5))
+                .assertNext(page -> {
+                    assertThat(page.items()).extracting(ItemDto::title).containsExactly("Мяч");
+                    assertThat(page.paging()).isEqualTo(new Paging(5, 1, false, false));
+                })
+                .verifyComplete();
 
-        assertThat(page.items()).extracting(ItemDto::title).containsExactly("Мяч");
-        assertThat(page.paging()).isEqualTo(new Paging(5, 1, false, false));
+        verify(itemRepository, never()).findAllBy(any());
     }
 
     @Test
     void findItems_shouldNormalizeInvalidPaging() {
-        Pageable pageable = PageRequest.of(0, ItemService.MAX_PAGE_SIZE, ItemSort.NO.toSort());
-        when(itemRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 0));
-        when(cartService.getCounts(List.of())).thenReturn(Map.of());
+        Pageable pageable = PageRequest.of(0, ItemService.MAX_PAGE_SIZE, ItemSort.ALPHA.toSort());
+        when(itemRepository.findAllBy(pageable)).thenReturn(Flux.empty());
+        when(itemRepository.count()).thenReturn(Mono.just(0L));
+        when(cartService.getCounts(List.of())).thenReturn(Mono.just(Map.of()));
 
-        ItemsPage page = itemService.findItems("", ItemSort.NO, 0, 1000);
-
-        assertThat(page.paging()).isEqualTo(new Paging(ItemService.MAX_PAGE_SIZE, 1, false, false));
+        StepVerifier.create(itemService.findItems(null, ItemSort.ALPHA, -3, 1000))
+                .expectNext(new ItemsPage(List.of(), new Paging(ItemService.MAX_PAGE_SIZE, 1, false, false)))
+                .verifyComplete();
     }
 
     @Test
     void getItem_shouldReturnItemWithCartCount() {
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(ball));
-        when(cartService.getCount(1L)).thenReturn(2);
+        when(itemRepository.findById(2L)).thenReturn(Mono.just(racket));
+        when(cartService.getCount(2)).thenReturn(Mono.just(4));
 
-        assertThat(itemService.getItem(1))
-                .isEqualTo(new ItemDto(1, "Мяч", "Описание Мяч", "images/1", 2500, 2));
+        StepVerifier.create(itemService.getItem(2))
+                .expectNext(new ItemDto(2, "Ракетка", "Описание Ракетка", "images/2", 7800, 4))
+                .verifyComplete();
     }
 
     @Test
-    void getItem_shouldThrow_whenItemMissing() {
-        when(itemRepository.findById(99L)).thenReturn(Optional.empty());
+    void getItem_shouldFail_whenItemMissing() {
+        when(itemRepository.findById(99L)).thenReturn(Mono.empty());
 
-        assertThatThrownBy(() -> itemService.getItem(99)).isInstanceOf(ItemNotFoundException.class);
+        StepVerifier.create(itemService.getItem(99))
+                .expectError(ItemNotFoundException.class)
+                .verify();
+
+        verify(cartService, never()).getCount(anyLong());
     }
 
     @Test
     void getImage_shouldReturnStoredImage() {
-        byte[] content = {1, 2, 3};
-        when(itemImageRepository.findById(1L)).thenReturn(Optional.of(new ItemImage(1L, "image/png", content)));
+        when(itemImageRepository.findById(1L))
+                .thenReturn(Mono.just(ItemImage.newImage(1L, "image/png", new byte[]{7})));
 
-        ImageData image = itemService.getImage(1);
-
-        assertThat(image.contentType()).isEqualTo("image/png");
-        assertThat(image.content()).isSameAs(content);
+        StepVerifier.create(itemService.getImage(1))
+                .assertNext(image -> {
+                    assertThat(image.contentType()).isEqualTo("image/png");
+                    assertThat(image.content()).containsExactly(7);
+                })
+                .verifyComplete();
     }
 
     @Test
-    void getImage_shouldThrow_whenImageMissing() {
-        when(itemImageRepository.findById(1L)).thenReturn(Optional.empty());
+    void getImage_shouldFail_whenImageMissing() {
+        when(itemImageRepository.findById(1L)).thenReturn(Mono.empty());
 
-        assertThatThrownBy(() -> itemService.getImage(1)).isInstanceOf(ImageNotFoundException.class);
+        StepVerifier.create(itemService.getImage(1))
+                .expectError(ImageNotFoundException.class)
+                .verify();
+    }
+
+    @Test
+    void isCatalogEmpty_shouldCheckItemCount() {
+        when(itemRepository.count()).thenReturn(Mono.just(0L), Mono.just(3L));
+
+        StepVerifier.create(itemService.isCatalogEmpty()).expectNext(true).verifyComplete();
+        StepVerifier.create(itemService.isCatalogEmpty()).expectNext(false).verifyComplete();
     }
 
     @Test
     void createItem_shouldSaveItemAndItsImage() {
-        when(itemRepository.save(any(Item.class))).thenReturn(item(7, "Мяч", 100));
-        byte[] content = {9};
+        when(itemRepository.save(any())).thenAnswer(invocation -> {
+            Item item = invocation.getArgument(0);
+            ReflectionTestUtils.setField(item, "id", 21L);
+            return Mono.just(item);
+        });
+        when(itemImageRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
-        long id = itemService.createItem(new NewItem("Мяч", "Описание", 100, new ImageData("image/svg+xml", content)));
+        StepVerifier.create(itemService.createItem(
+                        new NewItem("Мяч", "Футбольный", 2500, new ImageData("image/png", new byte[]{1, 2}))))
+                .expectNext(21L)
+                .verifyComplete();
 
-        assertThat(id).isEqualTo(7);
         ArgumentCaptor<ItemImage> captor = ArgumentCaptor.forClass(ItemImage.class);
         verify(itemImageRepository).save(captor.capture());
-        assertThat(captor.getValue().getItemId()).isEqualTo(7);
-        assertThat(captor.getValue().getContentType()).isEqualTo("image/svg+xml");
-        assertThat(captor.getValue().getContent()).isSameAs(content);
+        ItemImage image = captor.getValue();
+        assertThat(image.getItemId()).isEqualTo(21L);
+        assertThat(image.isNew()).isTrue();
+        assertThat(image.getContentType()).isEqualTo("image/png");
+        assertThat(image.getContent()).containsExactly(1, 2);
     }
 }
