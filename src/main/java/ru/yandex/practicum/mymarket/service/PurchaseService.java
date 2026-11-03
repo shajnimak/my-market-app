@@ -2,10 +2,8 @@ package ru.yandex.practicum.mymarket.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.exception.EmptyCartException;
-import ru.yandex.practicum.mymarket.model.CartItem;
-
-import java.util.List;
 
 /**
  * Эмулирует покупку: переносит содержимое корзины в новый заказ и очищает корзину.
@@ -22,13 +20,12 @@ public class PurchaseService {
     }
 
     @Transactional
-    public long buy() {
-        List<CartItem> cartItems = cartService.getCartItems();
-        if (cartItems.isEmpty()) {
-            throw new EmptyCartException();
-        }
-        long orderId = orderService.createOrder(cartItems);
-        cartService.clear();
-        return orderId;
+    public Mono<Long> buy() {
+        return cartService.getCartLines()
+                .collectList()
+                .filter(cartLines -> !cartLines.isEmpty())
+                .switchIfEmpty(Mono.error(EmptyCartException::new))
+                .flatMap(orderService::createOrder)
+                .flatMap(orderId -> cartService.clear().thenReturn(orderId));
     }
 }

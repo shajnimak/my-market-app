@@ -2,20 +2,20 @@ package ru.yandex.practicum.mymarket.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartDto;
-import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.exception.ItemNotFoundException;
 import ru.yandex.practicum.mymarket.mapper.ItemMapper;
 import ru.yandex.practicum.mymarket.model.CartAction;
 import ru.yandex.practicum.mymarket.model.CartItem;
-import ru.yandex.practicum.mymarket.model.Item;
+import ru.yandex.practicum.mymarket.model.CartLine;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -30,64 +30,67 @@ public class CartService {
     }
 
     @Transactional
-    public void changeQuantity(long itemId, CartAction action) {
-        switch (action) {
+    public Mono<Void> changeQuantity(long itemId, CartAction action) {
+        return switch (action) {
             case PLUS -> increase(itemId);
             case MINUS -> decrease(itemId);
-            case DELETE -> cartItemRepository.findByItemId(itemId).ifPresent(cartItemRepository::delete);
-        }
+            case DELETE -> cartItemRepository.findByItemId(itemId).flatMap(cartItemRepository::delete);
+        };
     }
 
-    public CartDto getCart() {
-        List<CartItem> cartItems = getCartItems();
-        List<ItemDto> items = cartItems.stream()
-                .map(cartItem -> ItemMapper.toDto(cartItem.getItem(), cartItem.getQuantity()))
-                .toList();
-        long total = cartItems.stream().mapToLong(CartItem::getTotalPrice).sum();
-        return new CartDto(items, total);
+    public Mono<CartDto> getCart() {
+        return getCartLines()
+                .collectList()
+                .map(CartService::toCart);
     }
 
-    public List<CartItem> getCartItems() {
-        return cartItemRepository.findAllByOrderByIdAsc();
+    public Flux<CartLine> getCartLines() {
+        return cartItemRepository.findCartLines();
     }
 
-    public int getCount(long itemId) {
+    public Mono<Integer> getCount(long itemId) {
         return cartItemRepository.findByItemId(itemId)
                 .map(CartItem::getQuantity)
-                .orElse(0);
+                .defaultIfEmpty(0);
     }
 
-    public Map<Long, Integer> getCounts(Collection<Long> itemIds) {
+    public Mono<Map<Long, Integer>> getCounts(Collection<Long> itemIds) {
         if (itemIds.isEmpty()) {
-            return Map.of();
+            return Mono.just(Map.of());
         }
-        return cartItemRepository.findByItemIdIn(itemIds).stream()
-                .collect(Collectors.toMap(cartItem -> cartItem.getItem().getId(), CartItem::getQuantity));
+        return cartItemRepository.findByItemIdIn(itemIds)
+                .collectMap(CartItem::getItemId, CartItem::getQuantity);
     }
 
     @Transactional
-    public void clear() {
-        cartItemRepository.deleteAllInBatch();
+    public Mono<Void> clear() {
+        return cartItemRepository.deleteAll();
     }
 
-    private void increase(long itemId) {
-        cartItemRepository.findByItemId(itemId).ifPresentOrElse(
-                CartItem::increment,
-                () -> {
-                    Item item = itemRepository.findById(itemId)
-                            .orElseThrow(() -> new ItemNotFoundException(itemId));
-                    cartItemRepository.save(new CartItem(item));
-                }
-        );
+    private Mono<Void> increase(long itemId) {
+        return cartItemRepository.findByItemId(itemId)
+                .doOnNext(CartItem::increment)
+                .switchIfEmpty(Mono.defer(() -> itemRepository.existsById(itemId)
+                        .flatMap(exists -> exists
+                                ? Mono.just(new CartItem(itemId))
+                                : Mono.error(new ItemNotFoundException(itemId)))))
+                .flatMap(cartItemRepository::save)
+                .then();
     }
 
-    private void decrease(long itemId) {
-        cartItemRepository.findByItemId(itemId).ifPresent(cartItem -> {
-            if (cartItem.getQuantity() > 1) {
-                cartItem.decrement();
-            } else {
-                cartItemRepository.delete(cartItem);
-            }
-        });
+    private Mono<Void> decrease(long itemId) {
+        return cartItemRepository.findByItemId(itemId)
+                .flatMap(cartItem -> {
+                    if (cartItem.getQuantity() > 1) {
+                        cartItem.decrement();
+                        return cartItemRepository.save(cartItem).then();
+                    }
+                    return cartItemRepository.delete(cartItem);
+                });
+    }
+
+    private static CartDto toCart(List<CartLine> cartLines) {
+        long total = cartLines.stream().mapToLong(CartLine::totalPrice).sum();
+        return new CartDto(cartLines.stream().map(ItemMapper::toDto).toList(), total);
     }
 }

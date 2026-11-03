@@ -1,11 +1,12 @@
 package ru.yandex.practicum.mymarket.service;
 
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
@@ -21,7 +22,6 @@ import ru.yandex.practicum.mymarket.repository.ItemImageRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
 import java.util.List;
-import java.util.Map;
 
 @Service
 @Transactional(readOnly = true)
@@ -41,44 +41,56 @@ public class ItemService {
         this.cartService = cartService;
     }
 
-    public ItemsPage findItems(String search, ItemSort sort, int pageNumber, int pageSize) {
+    public Mono<ItemsPage> findItems(String search, ItemSort sort, int pageNumber, int pageSize) {
         int number = Math.max(pageNumber, 1);
         int size = Math.clamp(pageSize, 1, MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(number - 1, size, sort.toSort());
 
-        Page<Item> page = StringUtils.hasText(search)
-                ? itemRepository.search(search.strip(), pageable)
-                : itemRepository.findAll(pageable);
+        boolean filtered = StringUtils.hasText(search);
+        Flux<Item> items = filtered ? itemRepository.search(search.strip(), pageable) : itemRepository.findAllBy(pageable);
+        Mono<Long> total = filtered ? itemRepository.countSearch(search.strip()) : itemRepository.count();
 
-        Map<Long, Integer> counts = cartService.getCounts(page.map(Item::getId).toList());
-        List<ItemDto> items = page.stream()
-                .map(item -> ItemMapper.toDto(item, counts.getOrDefault(item.getId(), 0)))
-                .toList();
-
-        return new ItemsPage(items, new Paging(size, number, page.hasPrevious(), page.hasNext()));
+        return items.collectList()
+                .flatMap(pageItems -> total.flatMap(count -> toPage(pageItems, count, pageable)));
     }
 
-    public ItemDto getItem(long id) {
-        Item item = itemRepository.findById(id)
-                .orElseThrow(() -> new ItemNotFoundException(id));
-        return ItemMapper.toDto(item, cartService.getCount(id));
+    public Mono<ItemDto> getItem(long id) {
+        return itemRepository.findById(id)
+                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(id)))
+                .flatMap(item -> cartService.getCount(id).map(count -> ItemMapper.toDto(item, count)));
     }
 
-    public ImageData getImage(long itemId) {
+    public Mono<ImageData> getImage(long itemId) {
         return itemImageRepository.findById(itemId)
                 .map(image -> new ImageData(image.getContentType(), image.getContent()))
-                .orElseThrow(() -> new ImageNotFoundException(itemId));
+                .switchIfEmpty(Mono.error(() -> new ImageNotFoundException(itemId)));
     }
 
-    public boolean isCatalogEmpty() {
-        return itemRepository.count() == 0;
+    public Mono<Boolean> isCatalogEmpty() {
+        return itemRepository.count().map(count -> count == 0);
     }
 
     @Transactional
-    public long createItem(NewItem newItem) {
-        Item item = itemRepository.save(new Item(newItem.title(), newItem.description(), newItem.price()));
+    public Mono<Long> createItem(NewItem newItem) {
         ImageData image = newItem.image();
-        itemImageRepository.save(new ItemImage(item.getId(), image.contentType(), image.content()));
-        return item.getId();
+        return itemRepository.save(new Item(newItem.title(), newItem.description(), newItem.price()))
+                .flatMap(item -> itemImageRepository
+                        .save(ItemImage.newImage(item.getId(), image.contentType(), image.content()))
+                        .thenReturn(item.getId()));
+    }
+
+    private Mono<ItemsPage> toPage(List<Item> items, long total, Pageable pageable) {
+        List<Long> ids = items.stream().map(Item::getId).toList();
+        Paging paging = new Paging(
+                pageable.getPageSize(),
+                pageable.getPageNumber() + 1,
+                pageable.hasPrevious(),
+                pageable.getOffset() + items.size() < total
+        );
+        return cartService.getCounts(ids)
+                .map(counts -> items.stream()
+                        .map(item -> ItemMapper.toDto(item, counts.getOrDefault(item.getId(), 0)))
+                        .toList())
+                .map(dtos -> new ItemsPage(dtos, paging));
     }
 }
