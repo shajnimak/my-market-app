@@ -25,6 +25,17 @@ class ImageControllerTest extends AbstractControllerTest {
     }
 
     @Test
+    void getImage_shouldForbidActiveContent_soSvgCanNotRunScripts() throws Exception {
+        when(itemService.getImage(1)).thenReturn(new ImageData("image/svg+xml", "<svg/>".getBytes()));
+
+        mockMvc.perform(get("/images/1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("Content-Security-Policy", ImageController.CONTENT_SECURITY_POLICY));
+    }
+
+    @Test
     void getImage_shouldReturnNotFound_whenImageMissing() throws Exception {
         when(itemService.getImage(2)).thenThrow(new ImageNotFoundException(2));
 
