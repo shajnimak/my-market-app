@@ -26,6 +26,18 @@ class ImageControllerTest extends AbstractControllerTest {
     }
 
     @Test
+    void getImage_shouldForbidActiveContent_soSvgCanNotRunScripts() {
+        when(itemService.getImage(1)).thenReturn(Mono.just(new ImageData("image/svg+xml", "<svg/>".getBytes())));
+
+        webTestClient.get().uri("/images/1")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Content-Disposition", "attachment")
+                .expectHeader().valueEquals("X-Content-Type-Options", "nosniff")
+                .expectHeader().valueEquals("Content-Security-Policy", ImageController.CONTENT_SECURITY_POLICY);
+    }
+
+    @Test
     void getImage_shouldReturnNotFound_whenImageMissing() {
         when(itemService.getImage(1)).thenReturn(Mono.error(new ImageNotFoundException(1)));
 
