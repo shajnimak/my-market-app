@@ -45,7 +45,7 @@
                             </div>
                             <div class="mb-3">
                                 <label for="image" class="form-label">Изображение</label>
-                                <input type="file" accept="image/*" id="image" name="image" class="form-control"
+                                <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" id="image" name="image" class="form-control"
                                        th:classappend="${#fields.hasErrors('image')} ? 'is-invalid'">
                                 <div class="invalid-feedback" th:errors="*{image}"></div>
                             </div>
