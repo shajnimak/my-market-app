@@ -62,11 +62,24 @@ src/main/java/ru/yandex/practicum/mymarket
 ├── mapper        # преобразование сущностей в DTO
 ├── model         # JPA-сущности Item, ItemImage, CartItem, Order, OrderItem; enum ItemSort, CartAction
 ├── repository    # Spring Data JPA репозитории
-└── service       # ItemService, CartService, OrderService, PurchaseService
+└── service       # ItemService, CartService, OrderService, PurchaseService, ShowcaseService
 ```
 
 Слои взаимодействуют только сверху вниз: `controller → service → repository`. Контроллеры работают с DTO,
 сущности не выходят за пределы транзакций сервисов (`spring.jpa.open-in-view=false`).
+
+Модули каталога (`ItemService`) и корзины (`CartService`) друг от друга не зависят. Витрину и карточку товара,
+где нужны и товары, и их количество в корзине, собирает фасад `ShowcaseService` уровнем выше.
+
+### Загрузка картинок
+
+- Формат картинки проверяется на сервере по сигнатуре первых байтов файла (`ImageFormat`): принимаются
+  только PNG, JPEG, GIF и WebP. Имя файла и Content-Type от браузера не учитываются, в базу сохраняется
+  тип, определённый сервером. SVG не принимается, так как может содержать скрипты.
+- `GET /images/{itemId}` отдаёт картинку с заголовками `Content-Disposition: attachment`,
+  `X-Content-Type-Options: nosniff` и `Content-Security-Policy: ... sandbox`. В `<img>` картинка
+  показывается как обычно, а при открытии по прямой ссылке браузер не исполнит активное содержимое
+  (это касается SVG из демо-каталога).
 
 ### Схема базы данных
 
@@ -120,8 +133,9 @@ docker build -t my-market-app .
 docker run --rm -p 8080:8080 my-market-app
 ```
 
-Образ собирается в два этапа: в первом Maven собирает executable JAR, во втором JAR запускается
-на `eclipse-temurin:21-jre` от непривилегированного пользователя. Приложение доступно на http://localhost:8080.
+Образ собирается в два этапа: в первом Maven прогоняет все тесты и собирает executable JAR, во втором JAR
+запускается на `eclipse-temurin:21-jre` от непривилегированного пользователя. Если тесты упали, образ не
+соберётся. Внешние сервисы для тестов не нужны — H2 работает в памяти. Приложение доступно на http://localhost:8080.
 
 > База данных H2 работает в памяти, поэтому корзина и заказы сбрасываются при перезапуске приложения.
 
@@ -147,3 +161,10 @@ docker run --rm -p 8080:8080 my-market-app
 - все `@DataJpaTest`-тесты используют одинаковую конфигурацию слайса.
 
 В итоге на весь прогон поднимается три контекста.
+
+## Непрерывная интеграция
+
+GitHub Actions (`.github/workflows/ci.yml`) на каждый push в `main` и ветки спринтов и на каждый pull request
+в `main` запускает `./mvnw verify` (все тесты и сборка JAR) на JDK 21, а затем собирает Docker-образ.
+Зелёные тесты проверяются автоматически до публикации образа.
+
