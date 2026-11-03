@@ -1,6 +1,8 @@
 package ru.yandex.practicum.mymarket.controller;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.web.reactive.function.BodyInserters;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.dto.Paging;
@@ -10,19 +12,13 @@ import ru.yandex.practicum.mymarket.model.ItemSort;
 
 import java.util.List;
 
-import static org.hamcrest.Matchers.containsString;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 class ItemControllerTest extends AbstractControllerTest {
 
@@ -32,109 +28,121 @@ class ItemControllerTest extends AbstractControllerTest {
     private static final ItemDto SKATES = new ItemDto(4, "Коньки", "Фигурные", "images/4", 6400, 1);
 
     @Test
-    void getItems_shouldUseDefaultsAndGroupItemsIntoRowsOfThree() throws Exception {
-        Paging paging = new Paging(5, 1, false, true);
+    void getItems_shouldUseDefaultsAndGroupItemsIntoRowsOfThree() {
         when(itemService.findItems("", ItemSort.NO, 1, 5))
-                .thenReturn(new ItemsPage(List.of(BALL, RACKET, SKI, SKATES), paging));
+                .thenReturn(Mono.just(new ItemsPage(List.of(BALL, RACKET, SKI, SKATES), new Paging(5, 1, false, true))));
 
-        mockMvc.perform(get("/"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("items"))
-                .andExpect(model().attribute("items", List.of(
-                        List.of(BALL, RACKET, SKI),
-                        List.of(SKATES, ItemDto.placeholder(), ItemDto.placeholder())
-                )))
-                .andExpect(model().attribute("search", ""))
-                .andExpect(model().attribute("sort", "NO"))
-                .andExpect(model().attribute("paging", paging))
-                .andExpect(content().string(containsString("Ракетка")));
+        String html = getHtml("/");
+
+        assertThat(html).contains("Мяч", "Ракетка", "Лыжи", "Коньки", "Страница: 1", "src=\"/images/2\"");
+        assertThat(occurrences(html, "class=\"card\"")).isEqualTo(4);
+        assertThat(occurrences(html, "<div>&nbsp;</div>")).isEqualTo(2);
+        assertThat(html).contains("name=\"pageNumber\" value=\"2\"").doesNotContain("name=\"pageNumber\" value=\"0\"");
     }
 
     @Test
-    void getItems_shouldPassRequestParametersToService() throws Exception {
-        Paging paging = new Paging(10, 2, true, false);
+    void getItems_shouldPassRequestParametersToService() {
         when(itemService.findItems("мяч", ItemSort.PRICE, 2, 10))
-                .thenReturn(new ItemsPage(List.of(BALL), paging));
+                .thenReturn(Mono.just(new ItemsPage(List.of(BALL), new Paging(10, 2, true, false))));
 
-        mockMvc.perform(get("/items")
-                        .param("search", "мяч")
-                        .param("sort", "PRICE")
-                        .param("pageNumber", "2")
-                        .param("pageSize", "10"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("items"))
-                .andExpect(model().attribute("search", "мяч"))
-                .andExpect(model().attribute("sort", "PRICE"))
-                .andExpect(model().attribute("paging", paging))
-                .andExpect(content().string(containsString("<option value=\"PRICE\" selected=\"selected\">")))
-                .andExpect(content().string(containsString("<option value=\"10\" selected=\"selected\">")));
+        String html = getHtml("/items?search=мяч&sort=PRICE&pageNumber=2&pageSize=10");
+
+        assertThat(html).contains(
+                "value=\"мяч\"",
+                "<option value=\"PRICE\" selected=\"selected\">",
+                "<option value=\"10\" selected=\"selected\">",
+                "Страница: 2",
+                "name=\"pageNumber\" value=\"1\"");
     }
 
     @Test
-    void getItems_shouldReturnBadRequest_whenSortUnknown() throws Exception {
-        mockMvc.perform(get("/items").param("sort", "COLOR"))
-                .andExpect(status().isBadRequest());
+    void getItems_shouldReturnBadRequest_whenSortUnknown() {
+        webTestClient.get().uri("/items?sort=COLOR")
+                .exchange()
+                .expectStatus().isBadRequest();
     }
 
     @Test
-    void changeCartQuantityFromItems_shouldChangeCartAndRedirectBackWithParams() throws Exception {
-        mockMvc.perform(post("/items")
-                        .param("id", "2")
-                        .param("action", "PLUS")
-                        .param("search", "мяч")
-                        .param("sort", "ALPHA")
-                        .param("pageNumber", "3")
-                        .param("pageSize", "20"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/items?search=%D0%BC%D1%8F%D1%87&sort=ALPHA&pageNumber=3&pageSize=20"));
+    void changeCartQuantityFromItems_shouldChangeCartAndRedirectBackWithParams() {
+        when(cartService.changeQuantity(2, CartAction.PLUS)).thenReturn(Mono.empty());
+
+        webTestClient.post().uri("/items")
+                .body(BodyInserters.fromFormData("id", "2")
+                        .with("action", "PLUS")
+                        .with("search", "мяч")
+                        .with("sort", "ALPHA")
+                        .with("pageNumber", "3")
+                        .with("pageSize", "20"))
+                .exchange()
+                .expectStatus().isSeeOther()
+                .expectHeader().location("/items?search=%D0%BC%D1%8F%D1%87&sort=ALPHA&pageNumber=3&pageSize=20");
 
         verify(cartService).changeQuantity(2, CartAction.PLUS);
     }
 
     @Test
-    void changeCartQuantityFromItems_shouldUseDefaultParams() throws Exception {
-        mockMvc.perform(post("/items").param("id", "2").param("action", "MINUS"))
-                .andExpect(redirectedUrl("/items?search=&sort=NO&pageNumber=1&pageSize=5"));
+    void changeCartQuantityFromItems_shouldUseDefaultParams() {
+        when(cartService.changeQuantity(2, CartAction.MINUS)).thenReturn(Mono.empty());
 
-        verify(cartService).changeQuantity(2, CartAction.MINUS);
+        webTestClient.post().uri("/items")
+                .body(BodyInserters.fromFormData("id", "2").with("action", "MINUS"))
+                .exchange()
+                .expectStatus().isSeeOther()
+                .expectHeader().location("/items?search=&sort=NO&pageNumber=1&pageSize=5");
     }
 
     @Test
-    void changeCartQuantityFromItems_shouldReturnBadRequest_whenActionMissing() throws Exception {
-        mockMvc.perform(post("/items").param("id", "2"))
-                .andExpect(status().isBadRequest());
+    void changeCartQuantityFromItems_shouldReturnBadRequest_whenActionMissing() {
+        webTestClient.post().uri("/items")
+                .body(BodyInserters.fromFormData("id", "2"))
+                .exchange()
+                .expectStatus().isBadRequest();
 
         verify(cartService, never()).changeQuantity(anyLong(), any());
     }
 
     @Test
-    void getItem_shouldRenderItemPage() throws Exception {
-        when(itemService.getItem(2)).thenReturn(RACKET);
+    void getItem_shouldRenderItemPage() {
+        when(itemService.getItem(2)).thenReturn(Mono.just(RACKET));
 
-        mockMvc.perform(get("/items/2"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("item"))
-                .andExpect(model().attribute("item", RACKET))
-                .andExpect(content().string(containsString("7800 руб.")));
+        String html = getHtml("/items/2");
+
+        assertThat(html).contains("Ракетка", "Теннисная", "7800 руб.", "action=\"/items/2\"", "<span>2</span>");
     }
 
     @Test
-    void getItem_shouldReturnNotFound_whenItemMissing() throws Exception {
-        when(itemService.getItem(99)).thenThrow(new ItemNotFoundException(99));
+    void getItem_shouldReturnNotFound_whenItemMissing() {
+        when(itemService.getItem(99)).thenReturn(Mono.error(new ItemNotFoundException(99)));
 
-        mockMvc.perform(get("/items/99"))
-                .andExpect(status().isNotFound());
+        webTestClient.get().uri("/items/99")
+                .exchange()
+                .expectStatus().isNotFound();
     }
 
     @Test
-    void changeCartQuantityFromItem_shouldChangeCartAndRenderItemPage() throws Exception {
-        when(itemService.getItem(2)).thenReturn(RACKET);
+    void changeCartQuantityFromItem_shouldChangeCartAndRenderItemPage() {
+        when(cartService.changeQuantity(2, CartAction.PLUS)).thenReturn(Mono.empty());
+        when(itemService.getItem(2)).thenReturn(Mono.just(RACKET));
 
-        mockMvc.perform(post("/items/2").param("action", "PLUS"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("item"))
-                .andExpect(model().attribute("item", RACKET));
+        webTestClient.post().uri("/items/2")
+                .body(BodyInserters.fromFormData("action", "PLUS"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Ракетка", "<span>2</span>"));
 
-        verify(cartService).changeQuantity(2, CartAction.PLUS);
+        var inOrder = inOrder(cartService, itemService);
+        inOrder.verify(cartService).changeQuantity(2, CartAction.PLUS);
+        inOrder.verify(itemService).getItem(2);
+    }
+
+    @Test
+    void changeCartQuantityFromItem_shouldReturnNotFound_whenItemMissing() {
+        when(cartService.changeQuantity(99, CartAction.PLUS)).thenReturn(Mono.error(new ItemNotFoundException(99)));
+
+        webTestClient.post().uri("/items/99")
+                .body(BodyInserters.fromFormData("action", "PLUS"))
+                .exchange()
+                .expectStatus().isNotFound();
     }
 }

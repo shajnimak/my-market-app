@@ -1,9 +1,9 @@
 package ru.yandex.practicum.mymarket.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.reactive.server.WebTestClient;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ItemService;
 import ru.yandex.practicum.mymarket.service.OrderService;
@@ -11,13 +11,13 @@ import ru.yandex.practicum.mymarket.service.PurchaseService;
 
 /**
  * Общая конфигурация веб-слоя: все контроллеры и одинаковый набор моков сервисов,
- * благодаря чему контекст создаётся один раз и переиспользуется всеми наследниками.
+ * благодаря чему контекст {@code @WebFluxTest} создаётся один раз и переиспользуется всеми наследниками.
  */
-@WebMvcTest
+@WebFluxTest
 public abstract class AbstractControllerTest {
 
     @Autowired
-    protected MockMvc mockMvc;
+    protected WebTestClient webTestClient;
 
     @MockitoBean
     protected ItemService itemService;
@@ -30,4 +30,22 @@ public abstract class AbstractControllerTest {
 
     @MockitoBean
     protected PurchaseService purchaseService;
+
+    protected String getHtml(String uri) {
+        return webTestClient.get().uri(uri)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentTypeCompatibleWith("text/html")
+                .expectBody(String.class)
+                .returnResult()
+                .getResponseBody();
+    }
+
+    protected static int occurrences(String text, String fragment) {
+        int count = 0;
+        for (int from = text.indexOf(fragment); from >= 0; from = text.indexOf(fragment, from + fragment.length())) {
+            count++;
+        }
+        return count;
+    }
 }
