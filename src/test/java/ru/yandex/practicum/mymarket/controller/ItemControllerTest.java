@@ -15,7 +15,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -120,20 +119,17 @@ class ItemControllerTest extends AbstractControllerTest {
     }
 
     @Test
-    void changeCartQuantityFromItem_shouldChangeCartAndRenderItemPage() {
+    void changeCartQuantityFromItem_shouldChangeCartAndRedirectToItemPage() {
         when(cartService.changeQuantity(2, CartAction.PLUS)).thenReturn(Mono.empty());
-        when(showcaseService.getItem(2)).thenReturn(Mono.just(RACKET));
 
         webTestClient.post().uri("/items/2")
                 .body(BodyInserters.fromFormData("action", "PLUS"))
                 .exchange()
-                .expectStatus().isOk()
-                .expectBody(String.class)
-                .value(html -> assertThat(html).contains("Ракетка", "<span>2</span>"));
+                .expectStatus().isSeeOther()
+                .expectHeader().location("/items/2");
 
-        var inOrder = inOrder(cartService, showcaseService);
-        inOrder.verify(cartService).changeQuantity(2, CartAction.PLUS);
-        inOrder.verify(showcaseService).getItem(2);
+        verify(cartService).changeQuantity(2, CartAction.PLUS);
+        verify(showcaseService, never()).getItem(anyLong());
     }
 
     @Test

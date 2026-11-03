@@ -76,17 +76,16 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void cart_shouldReflectChangesFromAllPages() {
-        webTestClient.post().uri("/items")
-                .body(BodyInserters.fromFormData("id", String.valueOf(ballId)).with("action", "PLUS"))
-                .exchange()
-                .expectStatus().isSeeOther();
-        postForm("/items/" + ballId, "action", "PLUS");
-        assertThat(postForm("/cart/items", "id", String.valueOf(racketId), "action", "PLUS"))
-                .contains("Итого: " + (2 * 2500 + 7800) + " руб.");
+        postForm("/items", "id", String.valueOf(ballId), "action", "PLUS");
+        assertThat(postForm("/items/" + ballId, "action", "PLUS")).isEqualTo("/items/" + ballId);
+        assertThat(getHtml("/items/" + ballId)).contains("<span>2</span>");
+        assertThat(postForm("/cart/items", "id", String.valueOf(racketId), "action", "PLUS")).isEqualTo("/cart/items");
+        assertThat(getHtml("/cart/items")).contains("Итого: " + (2 * 2500 + 7800) + " руб.");
 
-        assertThat(postForm("/cart/items", "id", String.valueOf(ballId), "action", "MINUS"))
-                .contains("Итого: " + (2500 + 7800) + " руб.");
-        assertThat(postForm("/cart/items", "id", String.valueOf(racketId), "action", "DELETE"))
+        postForm("/cart/items", "id", String.valueOf(ballId), "action", "MINUS");
+        assertThat(getHtml("/cart/items")).contains("Итого: " + (2500 + 7800) + " руб.");
+        postForm("/cart/items", "id", String.valueOf(racketId), "action", "DELETE");
+        assertThat(getHtml("/cart/items"))
                 .contains("Итого: 2500 руб.")
                 .doesNotContain("Ракетка");
 
@@ -170,17 +169,24 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
                 .getResponseBody();
     }
 
+    /**
+     * Отправляет форму и проверяет, что ответ — редирект (Post/Redirect/Get).
+     *
+     * @return адрес редиректа
+     */
     private String postForm(String uri, String... keysAndValues) {
         var form = BodyInserters.fromFormData(keysAndValues[0], keysAndValues[1]);
         for (int i = 2; i < keysAndValues.length; i += 2) {
             form = form.with(keysAndValues[i], keysAndValues[i + 1]);
         }
-        return webTestClient.post().uri(uri)
+        URI location = webTestClient.post().uri(uri)
                 .body(form)
                 .exchange()
-                .expectStatus().isOk()
-                .expectBody(String.class)
-                .returnResult()
-                .getResponseBody();
+                .expectStatus().isSeeOther()
+                .returnResult(Void.class)
+                .getResponseHeaders()
+                .getLocation();
+        assertThat(location).isNotNull();
+        return location.getPath();
     }
 }

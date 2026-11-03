@@ -23,20 +23,20 @@ public class CartController {
 
     @GetMapping
     public Mono<Rendering> getCart() {
-        return renderCart();
-    }
-
-    @PostMapping
-    public Mono<Rendering> changeCartQuantity(@Valid @ModelAttribute CartItemActionForm form) {
-        return cartService.changeQuantity(form.id(), form.action())
-                .then(Mono.defer(this::renderCart));
-    }
-
-    private Mono<Rendering> renderCart() {
         return cartService.getCart()
                 .map(cart -> Rendering.view("cart")
                         .modelAttribute("items", cart.items())
                         .modelAttribute("total", cart.total())
                         .build());
+    }
+
+    /**
+     * Post/Redirect/Get: после изменения корзины браузер перезапрашивает её через GET,
+     * поэтому обновление страницы не отправит форму повторно.
+     */
+    @PostMapping
+    public Mono<String> changeCartQuantity(@Valid @ModelAttribute CartItemActionForm form) {
+        return cartService.changeQuantity(form.id(), form.action())
+                .thenReturn("redirect:/cart/items");
     }
 }

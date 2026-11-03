@@ -12,7 +12,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,20 +37,17 @@ class CartControllerTest extends AbstractControllerTest {
     }
 
     @Test
-    void changeCartQuantity_shouldApplyActionAndRenderUpdatedCart() {
+    void changeCartQuantity_shouldApplyActionAndRedirectToCart() {
         when(cartService.changeQuantity(1, CartAction.DELETE)).thenReturn(Mono.empty());
-        when(cartService.getCart()).thenReturn(Mono.just(new CartDto(List.of(), 0)));
 
         webTestClient.post().uri("/cart/items")
                 .body(BodyInserters.fromFormData("id", "1").with("action", "DELETE"))
                 .exchange()
-                .expectStatus().isOk()
-                .expectBody(String.class)
-                .value(html -> assertThat(html).doesNotContain("Мяч").doesNotContain("action=\"/buy\""));
+                .expectStatus().isSeeOther()
+                .expectHeader().location("/cart/items");
 
-        var inOrder = inOrder(cartService);
-        inOrder.verify(cartService).changeQuantity(1, CartAction.DELETE);
-        inOrder.verify(cartService).getCart();
+        verify(cartService).changeQuantity(1, CartAction.DELETE);
+        verify(cartService, never()).getCart();
     }
 
     @Test
