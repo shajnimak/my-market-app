@@ -40,6 +40,10 @@ public final class ItemMapper {
         );
     }
 
+    public static CartLine toCartLine(ItemCard card, int quantity) {
+        return new CartLine(card.id(), card.title(), card.description(), card.price(), quantity);
+    }
+
     public static ItemDto toDto(CartLine cartLine) {
         return new ItemDto(
                 cartLine.itemId(),

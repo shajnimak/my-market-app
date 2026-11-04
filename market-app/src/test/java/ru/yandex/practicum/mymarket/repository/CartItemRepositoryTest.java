@@ -6,7 +6,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.model.CartItem;
-import ru.yandex.practicum.mymarket.model.CartLine;
 import ru.yandex.practicum.mymarket.model.Item;
 
 import java.util.List;
@@ -53,10 +52,16 @@ class CartItemRepositoryTest extends AbstractRepositoryTest {
     }
 
     @Test
-    void findCartLines_shouldJoinItemsInAddingOrder() {
-        StepVerifier.create(cartItemRepository.findCartLines())
-                .expectNext(new CartLine(racket.getId(), "Ракетка", "Теннисная", 7800, 2))
-                .expectNext(new CartLine(ball.getId(), "Мяч", "Футбольный", 2500, 1))
+    void findAllByOrderByIdAsc_shouldReturnCartItemsInAddingOrder() {
+        StepVerifier.create(cartItemRepository.findAllByOrderByIdAsc())
+                .assertNext(cartItem -> {
+                    assertThat(cartItem.getItemId()).isEqualTo(racket.getId());
+                    assertThat(cartItem.getQuantity()).isEqualTo(2);
+                })
+                .assertNext(cartItem -> {
+                    assertThat(cartItem.getItemId()).isEqualTo(ball.getId());
+                    assertThat(cartItem.getQuantity()).isEqualTo(1);
+                })
                 .verifyComplete();
     }
 

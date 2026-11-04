@@ -5,28 +5,30 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartDto;
-import ru.yandex.practicum.mymarket.exception.ItemNotFoundException;
 import ru.yandex.practicum.mymarket.mapper.ItemMapper;
 import ru.yandex.practicum.mymarket.model.CartAction;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.CartLine;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
-import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Корзина. В базе хранятся только id товаров и количество, данные товаров берутся
+ * из каталога {@link ItemService}, то есть из кеша Redis.
+ */
 @Service
 @Transactional(readOnly = true)
 public class CartService {
 
     private final CartItemRepository cartItemRepository;
-    private final ItemRepository itemRepository;
+    private final ItemService itemService;
 
-    public CartService(CartItemRepository cartItemRepository, ItemRepository itemRepository) {
+    public CartService(CartItemRepository cartItemRepository, ItemService itemService) {
         this.cartItemRepository = cartItemRepository;
-        this.itemRepository = itemRepository;
+        this.itemService = itemService;
     }
 
     @Transactional
@@ -45,7 +47,9 @@ public class CartService {
     }
 
     public Flux<CartLine> getCartLines() {
-        return cartItemRepository.findCartLines();
+        return cartItemRepository.findAllByOrderByIdAsc()
+                .flatMapSequential(cartItem -> itemService.getItem(cartItem.getItemId())
+                        .map(card -> ItemMapper.toCartLine(card, cartItem.getQuantity())));
     }
 
     public Mono<Integer> getCount(long itemId) {
@@ -70,10 +74,7 @@ public class CartService {
     private Mono<Void> increase(long itemId) {
         return cartItemRepository.findByItemId(itemId)
                 .doOnNext(CartItem::increment)
-                .switchIfEmpty(Mono.defer(() -> itemRepository.existsById(itemId)
-                        .flatMap(exists -> exists
-                                ? Mono.just(new CartItem(itemId))
-                                : Mono.error(new ItemNotFoundException(itemId)))))
+                .switchIfEmpty(Mono.defer(() -> itemService.getItem(itemId).map(card -> new CartItem(itemId))))
                 .flatMap(cartItemRepository::save)
                 .then();
     }
@@ -86,7 +87,6 @@ public class CartService {
     }
 
     private static CartDto toCart(List<CartLine> cartLines) {
-        long total = cartLines.stream().mapToLong(CartLine::totalPrice).sum();
-        return new CartDto(cartLines.stream().map(ItemMapper::toDto).toList(), total);
+        return new CartDto(cartLines.stream().map(ItemMapper::toDto).toList(), CartLine.total(cartLines));
     }
 }

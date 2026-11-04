@@ -13,9 +13,7 @@ import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.exception.ItemNotFoundException;
 import ru.yandex.practicum.mymarket.model.CartAction;
 import ru.yandex.practicum.mymarket.model.CartItem;
-import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
-import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -27,9 +25,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static ru.yandex.practicum.mymarket.TestData.card;
 import static ru.yandex.practicum.mymarket.TestData.cartItem;
-import static ru.yandex.practicum.mymarket.TestData.cartLine;
-import static ru.yandex.practicum.mymarket.TestData.item;
 
 @ExtendWith(MockitoExtension.class)
 class CartServiceTest {
@@ -38,17 +35,16 @@ class CartServiceTest {
     private CartItemRepository cartItemRepository;
 
     @Mock
-    private ItemRepository itemRepository;
+    private ItemService itemService;
 
     @InjectMocks
     private CartService cartService;
 
-    private final Item ball = item(1, "Мяч", 2500);
 
     @Test
     void plus_shouldAddItemToCart_whenItemNotInCart() {
         when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.empty());
-        when(itemRepository.existsById(1L)).thenReturn(Mono.just(true));
+        when(itemService.getItem(1)).thenReturn(Mono.just(card(1, "Мяч", 2500)));
         when(cartItemRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
         StepVerifier.create(cartService.changeQuantity(1, CartAction.PLUS)).verifyComplete();
@@ -68,13 +64,13 @@ class CartServiceTest {
         StepVerifier.create(cartService.changeQuantity(1, CartAction.PLUS)).verifyComplete();
 
         assertThat(cartItem.getQuantity()).isEqualTo(3);
-        verifyNoInteractions(itemRepository);
+        verifyNoInteractions(itemService);
     }
 
     @Test
     void plus_shouldFail_whenItemDoesNotExist() {
         when(cartItemRepository.findByItemId(42L)).thenReturn(Mono.empty());
-        when(itemRepository.existsById(42L)).thenReturn(Mono.just(false));
+        when(itemService.getItem(42)).thenReturn(Mono.error(new ItemNotFoundException(42)));
 
         StepVerifier.create(cartService.changeQuantity(42, CartAction.PLUS))
                 .expectError(ItemNotFoundException.class)
@@ -115,7 +111,7 @@ class CartServiceTest {
 
         verify(cartItemRepository, never()).delete(any());
         verify(cartItemRepository, never()).save(any());
-        verifyNoInteractions(itemRepository);
+        verifyNoInteractions(itemService);
     }
 
     @Test
@@ -130,9 +126,10 @@ class CartServiceTest {
     }
 
     @Test
-    void getCart_shouldReturnItemsWithCountsAndTotal() {
-        Item racket = item(2, "Ракетка", 7800);
-        when(cartItemRepository.findCartLines()).thenReturn(Flux.just(cartLine(ball, 2), cartLine(racket, 1)));
+    void getCart_shouldCombineCartQuantitiesWithCachedItemCards() {
+        when(cartItemRepository.findAllByOrderByIdAsc()).thenReturn(Flux.just(cartItem(1, 2), cartItem(2, 1)));
+        when(itemService.getItem(1)).thenReturn(Mono.just(card(1, "Мяч", 2500)));
+        when(itemService.getItem(2)).thenReturn(Mono.just(card(2, "Ракетка", 7800)));
 
         StepVerifier.create(cartService.getCart())
                 .assertNext(cart -> {
@@ -149,7 +146,7 @@ class CartServiceTest {
 
     @Test
     void getCart_shouldReturnEmptyCart_whenNothingAdded() {
-        when(cartItemRepository.findCartLines()).thenReturn(Flux.empty());
+        when(cartItemRepository.findAllByOrderByIdAsc()).thenReturn(Flux.empty());
 
         StepVerifier.create(cartService.getCart())
                 .assertNext(cart -> {

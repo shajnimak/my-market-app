@@ -56,7 +56,7 @@ public class OrderService {
 
     @Transactional
     public Mono<Long> createOrder(List<CartLine> cartLines) {
-        long totalSum = cartLines.stream().mapToLong(CartLine::totalPrice).sum();
+        long totalSum = CartLine.total(cartLines);
         return orderRepository.save(new Order(LocalDateTime.now(clock), totalSum))
                 .flatMap(order -> orderItemRepository
                         .saveAll(cartLines.stream().map(line -> new OrderItem(order.getId(), line)).toList())
