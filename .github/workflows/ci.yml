@@ -18,8 +18,9 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Run tests and build executable JAR
+      # Оба модуля: генерация кода по OpenAPI, тесты (Redis поднимается в Testcontainers) и executable JAR
+      - name: Run tests and build executable JARs
         run: ./mvnw -B verify
 
-      - name: Build Docker image
-        run: docker build -f market-app/Dockerfile -t my-market-app .
+      - name: Build Docker images
+        run: docker compose build
