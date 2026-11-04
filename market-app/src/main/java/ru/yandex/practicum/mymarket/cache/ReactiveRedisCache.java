@@ -7,6 +7,7 @@ import org.springframework.data.redis.core.ScanOptions;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.function.Supplier;
 
 /**
  * Кеш вида cache-aside поверх {@link ReactiveRedisTemplate}: значение ищется в Redis по ключу
@@ -33,13 +34,13 @@ public class ReactiveRedisCache<V> {
 
     /**
      * Возвращает значение из кеша, а при промахе — из {@code loader}, сохраняя его в кеш.
-     * Пустой результат и ошибки {@code loader} не кешируются.
+     * Загрузчик вызывается только при промахе. Пустой результат и ошибки загрузчика не кешируются.
      */
-    public Mono<V> get(String key, Mono<V> loader) {
+    public Mono<V> get(String key, Supplier<Mono<V>> loader) {
         String redisKey = redisKey(key);
         return redisTemplate.opsForValue().get(redisKey)
                 .onErrorResume(error -> skipCache("read", redisKey, error))
-                .switchIfEmpty(Mono.defer(() -> loader.flatMap(value -> put(redisKey, value).thenReturn(value))));
+                .switchIfEmpty(Mono.defer(() -> loader.get().flatMap(value -> put(redisKey, value).thenReturn(value))));
     }
 
     /**
