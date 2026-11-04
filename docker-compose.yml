@@ -1,0 +1,37 @@
+# Витрина, сервис платежей и Redis одной командой: docker compose up --build
+services:
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    image: my-market/payment-service
+    ports:
+      - "8081:8081"
+    environment:
+      PAYMENT_ACCOUNT_INITIAL_BALANCE: ${PAYMENT_INITIAL_BALANCE:-100000}
+
+  market-app:
+    build:
+      context: .
+      dockerfile: market-app/Dockerfile
+    image: my-market/market-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      MARKET_PAYMENT_URL: http://payment-service:8081
+    depends_on:
+      redis:
+        condition: service_healthy
+      payment-service:
+        condition: service_started
