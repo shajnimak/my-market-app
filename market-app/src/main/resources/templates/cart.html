@@ -44,14 +44,25 @@
                 </div>
             </div>
         </div>
-        <div class="row p-2">
+        <div class="row p-2" th:if="${!items.isEmpty()}">
             <div class="col">
-                <form action="/buy" method="post" th:if="${!items.isEmpty()}">
+                <form action="/buy" method="post">
                     <div class="hstack gap-3">
                         <h2 th:text="'Итого: '+${total}+' руб.'"/>
-                        <button class="btn btn-warning ms-auto">Купить</button>
+                        <span class="ms-auto text-secondary" th:if="${checkout.balance() != null}"
+                              th:text="'На счёте: '+${checkout.balance()}+' руб.'"></span>
+                        <button class="btn btn-warning" th:classappend="${checkout.balance() == null} ? 'ms-auto'"
+                                th:disabled="${!checkout.available()}">Купить</button>
                     </div>
                 </form>
+                <div th:switch="${checkout.status().name()}">
+                    <div class="alert alert-warning mt-2" th:case="'INSUFFICIENT_FUNDS'">
+                        Недостаточно средств на счёте для оплаты заказа
+                    </div>
+                    <div class="alert alert-danger mt-2" th:case="'PAYMENT_SERVICE_UNAVAILABLE'">
+                        Сервис платежей недоступен, оформить заказ сейчас нельзя. Попробуйте позже
+                    </div>
+                </div>
             </div>
         </div>
     </div>

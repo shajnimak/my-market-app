@@ -120,6 +120,7 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
                 .verifyComplete();
         assertThat(getHtml(location.toString())).contains("Поздравляем", "Заказ №" + orderId, "Сумма: 12800 руб.");
         assertThat(getHtml("/orders")).contains("href=\"/orders/" + orderId + "\"", "Футбольный мяч (2 шт.) 5000 руб.");
+        assertThat(paymentServiceStub.getPayments()).containsExactly(12800L);
         StepVerifier.create(cartService.getCart())
                 .assertNext(cart -> {
                     assertThat(cart.items()).isEmpty();

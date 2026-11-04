@@ -10,24 +10,32 @@ import org.springframework.web.reactive.result.view.Rendering;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartItemActionForm;
 import ru.yandex.practicum.mymarket.service.CartService;
+import ru.yandex.practicum.mymarket.service.PurchaseService;
 
 @Controller
 @RequestMapping("/cart/items")
 public class CartController {
 
     private final CartService cartService;
+    private final PurchaseService purchaseService;
 
-    public CartController(CartService cartService) {
+    public CartController(CartService cartService, PurchaseService purchaseService) {
         this.cartService = cartService;
+        this.purchaseService = purchaseService;
     }
 
+    /**
+     * Корзина и доступность оформления заказа: баланс запрашивается в сервисе платежей.
+     */
     @GetMapping
     public Mono<Rendering> getCart() {
         return cartService.getCart()
-                .map(cart -> Rendering.view("cart")
-                        .modelAttribute("items", cart.items())
-                        .modelAttribute("total", cart.total())
-                        .build());
+                .flatMap(cart -> purchaseService.getCheckout(cart.total())
+                        .map(checkout -> Rendering.view("cart")
+                                .modelAttribute("items", cart.items())
+                                .modelAttribute("total", cart.total())
+                                .modelAttribute("checkout", checkout)
+                                .build()));
     }
 
     /**
