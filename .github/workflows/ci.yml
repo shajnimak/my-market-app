@@ -22,4 +22,4 @@ jobs:
         run: ./mvnw -B verify
 
       - name: Build Docker image
-        run: docker build -t my-market-app .
+        run: docker build -f market-app/Dockerfile -t my-market-app .
