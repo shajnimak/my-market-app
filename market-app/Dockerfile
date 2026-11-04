@@ -5,6 +5,7 @@ FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY pom.xml .
 COPY market-app/pom.xml market-app/
+COPY payment-service/pom.xml payment-service/
 RUN mvn -B -q -pl market-app -am dependency:go-offline
 COPY market-app/src market-app/src
 RUN mvn -B -pl market-app -am package
