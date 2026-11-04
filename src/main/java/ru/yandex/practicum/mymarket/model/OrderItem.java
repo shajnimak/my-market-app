@@ -1,56 +1,37 @@
 package ru.yandex.practicum.mymarket.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
 
 /**
  * Позиция заказа. Название и цена копируются из товара в момент покупки,
  * чтобы последующее изменение товара не меняло уже оформленные заказы.
  */
-@Entity
-@Table(name = "order_items")
+@Table("order_items")
 public class OrderItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
+    private Long orderId;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "item_id", nullable = false)
-    private Item item;
+    private Long itemId;
 
-    @Column(nullable = false)
     private String title;
 
-    @Column(nullable = false)
     private long price;
 
-    @Column(nullable = false)
     private int quantity;
 
     protected OrderItem() {
     }
 
-    public OrderItem(Item item, int quantity) {
-        this.item = item;
-        this.title = item.getTitle();
-        this.price = item.getPrice();
-        this.quantity = quantity;
-    }
-
-    void setOrder(Order order) {
-        this.order = order;
+    public OrderItem(Long orderId, CartLine cartLine) {
+        this.orderId = orderId;
+        this.itemId = cartLine.itemId();
+        this.title = cartLine.title();
+        this.price = cartLine.price();
+        this.quantity = cartLine.quantity();
     }
 
     public long getTotalPrice() {
@@ -61,12 +42,12 @@ public class OrderItem {
         return id;
     }
 
-    public Order getOrder() {
-        return order;
+    public Long getOrderId() {
+        return orderId;
     }
 
-    public Item getItem() {
-        return item;
+    public Long getItemId() {
+        return itemId;
     }
 
     public String getTitle() {

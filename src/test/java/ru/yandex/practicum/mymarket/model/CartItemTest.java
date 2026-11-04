@@ -4,15 +4,12 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static ru.yandex.practicum.mymarket.TestData.cartItem;
-import static ru.yandex.practicum.mymarket.TestData.item;
 
 class CartItemTest {
 
-    private final Item ball = item(1, "Мяч", 2500);
-
     @Test
     void decrement_shouldReduceQuantity_whenMoreThanOne() {
-        CartItem cartItem = cartItem(ball, 3);
+        CartItem cartItem = cartItem(1, 3);
 
         assertThat(cartItem.decrement()).isTrue();
         assertThat(cartItem.getQuantity()).isEqualTo(2);
@@ -20,18 +17,18 @@ class CartItemTest {
 
     @Test
     void decrement_shouldKeepLastUnitAndSignalRemoval() {
-        CartItem cartItem = cartItem(ball, 1);
+        CartItem cartItem = cartItem(1, 1);
 
         assertThat(cartItem.decrement()).isFalse();
         assertThat(cartItem.getQuantity()).isEqualTo(1);
     }
 
     @Test
-    void increment_shouldStartFromOneAndIncreaseTotalPrice() {
-        CartItem cartItem = new CartItem(ball);
+    void newCartItem_shouldStartFromOne() {
+        CartItem cartItem = new CartItem(1L);
         cartItem.increment();
 
         assertThat(cartItem.getQuantity()).isEqualTo(2);
-        assertThat(cartItem.getTotalPrice()).isEqualTo(5000);
+        assertThat(cartItem.getItemId()).isEqualTo(1L);
     }
 }

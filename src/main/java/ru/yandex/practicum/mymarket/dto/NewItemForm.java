@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.codec.multipart.FilePart;
 
 public class NewItemForm {
 
@@ -20,7 +20,7 @@ public class NewItemForm {
     @PositiveOrZero
     private Long price;
 
-    private MultipartFile image;
+    private FilePart image;
 
     public String getTitle() {
         return title;
@@ -46,11 +46,11 @@ public class NewItemForm {
         this.price = price;
     }
 
-    public MultipartFile getImage() {
+    public FilePart getImage() {
         return image;
     }
 
-    public void setImage(MultipartFile image) {
+    public void setImage(FilePart image) {
         this.image = image;
     }
 }

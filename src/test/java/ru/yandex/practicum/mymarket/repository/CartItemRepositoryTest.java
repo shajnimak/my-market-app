@@ -3,22 +3,21 @@ package ru.yandex.practicum.mymarket.repository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.dao.DataIntegrityViolationException;
+import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.model.CartItem;
+import ru.yandex.practicum.mymarket.model.CartLine;
 import ru.yandex.practicum.mymarket.model.Item;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static ru.yandex.practicum.mymarket.TestData.cartItem;
 
-@DataJpaTest
-class CartItemRepositoryTest {
+class CartItemRepositoryTest extends AbstractRepositoryTest {
 
     @Autowired
-    private TestEntityManager entityManager;
+    private ItemRepository itemRepository;
 
     @Autowired
     private CartItemRepository cartItemRepository;
@@ -29,46 +28,42 @@ class CartItemRepositoryTest {
 
     @BeforeEach
     void setUp() {
-        ball = entityManager.persist(new Item("Мяч", "Футбольный", 2500));
-        racket = entityManager.persist(new Item("Ракетка", "Теннисная", 7800));
-        ski = entityManager.persist(new Item("Лыжи", "Беговые", 12900));
-        entityManager.persist(new CartItem(racket));
-        entityManager.persist(new CartItem(ball));
-        entityManager.flush();
-        entityManager.clear();
+        ball = itemRepository.save(new Item("Мяч", "Футбольный", 2500)).block();
+        racket = itemRepository.save(new Item("Ракетка", "Теннисная", 7800)).block();
+        ski = itemRepository.save(new Item("Лыжи", "Беговые", 12900)).block();
+        cartItemRepository.save(cartItem(racket.getId(), 2))
+                .then(cartItemRepository.save(cartItem(ball.getId(), 1)))
+                .block();
     }
 
     @Test
     void findByItemId_shouldReturnCartItem_whenItemInCart() {
-        assertThat(cartItemRepository.findByItemId(ball.getId()))
-                .hasValueSatisfying(cartItem -> assertThat(cartItem.getQuantity()).isEqualTo(1));
-        assertThat(cartItemRepository.findByItemId(ski.getId())).isEmpty();
+        StepVerifier.create(cartItemRepository.findByItemId(racket.getId()))
+                .assertNext(cartItem -> assertThat(cartItem.getQuantity()).isEqualTo(2))
+                .verifyComplete();
+        StepVerifier.create(cartItemRepository.findByItemId(ski.getId()))
+                .verifyComplete();
     }
 
     @Test
     void findByItemIdIn_shouldReturnOnlyItemsInCart() {
-        List<CartItem> cartItems = cartItemRepository.findByItemIdIn(List.of(ball.getId(), ski.getId()));
-
-        assertThat(cartItems)
-                .extracting(cartItem -> cartItem.getItem().getId())
-                .containsExactly(ball.getId());
+        StepVerifier.create(cartItemRepository.findByItemIdIn(List.of(ball.getId(), ski.getId())).map(CartItem::getItemId))
+                .expectNext(ball.getId())
+                .verifyComplete();
     }
 
     @Test
-    void findAllByOrderByIdAsc_shouldReturnCartItemsInAddingOrderWithItems() {
-        List<CartItem> cartItems = cartItemRepository.findAllByOrderByIdAsc();
-        entityManager.clear();
-
-        assertThat(cartItems)
-                .extracting(cartItem -> cartItem.getItem().getTitle())
-                .containsExactly("Ракетка", "Мяч");
+    void findCartLines_shouldJoinItemsInAddingOrder() {
+        StepVerifier.create(cartItemRepository.findCartLines())
+                .expectNext(new CartLine(racket.getId(), "Ракетка", "Теннисная", 7800, 2))
+                .expectNext(new CartLine(ball.getId(), "Мяч", "Футбольный", 2500, 1))
+                .verifyComplete();
     }
 
     @Test
     void save_shouldRejectSecondCartItemForSameItem() {
-        Item item = entityManager.find(Item.class, ball.getId());
-
-        assertThatThrownBy(() -> cartItemRepository.saveAndFlush(new CartItem(item)))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        StepVerifier.create(cartItemRepository.save(new CartItem(ball.getId())))
+                .expectError(DataIntegrityViolationException.class)
+                .verify();
     }
 }

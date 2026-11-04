@@ -1,45 +1,48 @@
 package ru.yandex.practicum.mymarket.controller;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.exception.ImageNotFoundException;
 
+import java.time.Duration;
+
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class ImageControllerTest extends AbstractControllerTest {
 
     @Test
-    void getImage_shouldReturnImageBytesWithContentType() throws Exception {
-        byte[] content = {1, 2, 3};
-        when(itemService.getImage(1)).thenReturn(new ImageData("image/png", content));
+    void getImage_shouldReturnImageBytesWithContentType() {
+        when(itemService.getImage(1)).thenReturn(Mono.just(new ImageData("image/png", new byte[]{1, 2, 3})));
 
-        mockMvc.perform(get("/images/1"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType("image/png"))
-                .andExpect(content().bytes(content))
-                .andExpect(header().string("Cache-Control", "max-age=3600"));
+        webTestClient.get().uri("/images/1")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentType(MediaType.IMAGE_PNG)
+                .expectHeader().cacheControl(CacheControl.maxAge(Duration.ofHours(1)))
+                .expectBody(byte[].class).isEqualTo(new byte[]{1, 2, 3});
     }
 
     @Test
-    void getImage_shouldForbidActiveContent_soSvgCanNotRunScripts() throws Exception {
-        when(itemService.getImage(1)).thenReturn(new ImageData("image/svg+xml", "<svg/>".getBytes()));
+    void getImage_shouldForbidActiveContent_soSvgCanNotRunScripts() {
+        when(itemService.getImage(1)).thenReturn(Mono.just(new ImageData("image/svg+xml", "<svg/>".getBytes())));
 
-        mockMvc.perform(get("/images/1"))
-                .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", "attachment"))
-                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
-                .andExpect(header().string("Content-Security-Policy", ImageController.CONTENT_SECURITY_POLICY));
+        webTestClient.get().uri("/images/1")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Content-Disposition", "attachment")
+                .expectHeader().valueEquals("X-Content-Type-Options", "nosniff")
+                .expectHeader().valueEquals("Content-Security-Policy", ImageController.CONTENT_SECURITY_POLICY);
     }
 
     @Test
-    void getImage_shouldReturnNotFound_whenImageMissing() throws Exception {
-        when(itemService.getImage(2)).thenThrow(new ImageNotFoundException(2));
+    void getImage_shouldReturnNotFound_whenImageMissing() {
+        when(itemService.getImage(1)).thenReturn(Mono.error(new ImageNotFoundException(1)));
 
-        mockMvc.perform(get("/images/2"))
-                .andExpect(status().isNotFound());
+        webTestClient.get().uri("/images/1")
+                .exchange()
+                .expectStatus().isNotFound();
     }
 }

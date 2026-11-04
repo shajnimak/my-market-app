@@ -12,6 +12,9 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.MediaType;
 import org.springframework.http.MediaTypeFactory;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.NewItem;
 import ru.yandex.practicum.mymarket.service.ItemService;
@@ -42,21 +45,45 @@ public class DemoCatalogLoader implements ApplicationRunner {
         this.resourceLoader = resourceLoader;
     }
 
+    /**
+     * Выполняется в главном потоке при старте приложения, до приёма запросов,
+     * поэтому дождаться окончания загрузки здесь допустимо.
+     */
     @Override
-    public void run(ApplicationArguments args) throws IOException {
-        if (!itemService.isCatalogEmpty()) {
-            return;
-        }
-        List<DemoItem> demoItems;
-        try (InputStream catalog = resourceLoader.getResource(CATALOG_LOCATION).getInputStream()) {
-            demoItems = objectMapper.readValue(catalog, new TypeReference<>() {
-            });
-        }
-        for (DemoItem demoItem : demoItems) {
-            itemService.createItem(new NewItem(demoItem.title(), demoItem.description(), demoItem.price(),
-                    loadImage(demoItem.image())));
-        }
-        log.info("Loaded {} demo items into the catalog", demoItems.size());
+    public void run(ApplicationArguments args) {
+        load().block();
+    }
+
+    /**
+     * Загружает демо-каталог, если витрина пуста.
+     *
+     * @return количество добавленных товаров (0, если каталог уже заполнен)
+     */
+    public Mono<Long> load() {
+        return itemService.isCatalogEmpty()
+                .filter(Boolean::booleanValue)
+                .flatMap(empty -> readCatalog()
+                        .flatMapMany(Flux::fromIterable)
+                        .concatMap(this::createItem)
+                        .count()
+                        .doOnNext(count -> log.info("Loaded {} demo items into the catalog", count)))
+                .defaultIfEmpty(0L);
+    }
+
+    private Mono<List<DemoItem>> readCatalog() {
+        return Mono.fromCallable(() -> {
+            try (InputStream catalog = resourceLoader.getResource(CATALOG_LOCATION).getInputStream()) {
+                return objectMapper.readValue(catalog, new TypeReference<List<DemoItem>>() {
+                });
+            }
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private Mono<Long> createItem(DemoItem demoItem) {
+        return Mono.fromCallable(() -> loadImage(demoItem.image()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(image -> itemService.createItem(
+                        new NewItem(demoItem.title(), demoItem.description(), demoItem.price(), image)));
     }
 
     private ImageData loadImage(String fileName) throws IOException {

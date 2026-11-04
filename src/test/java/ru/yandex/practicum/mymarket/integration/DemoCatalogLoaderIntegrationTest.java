@@ -3,11 +3,10 @@ package ru.yandex.practicum.mymarket.integration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.core.io.ResourceLoader;
+import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.AbstractIntegrationTest;
 import ru.yandex.practicum.mymarket.config.DemoCatalogLoader;
-import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.model.ItemSort;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 import ru.yandex.practicum.mymarket.service.ItemService;
@@ -29,19 +28,26 @@ class DemoCatalogLoaderIntegrationTest extends AbstractIntegrationTest {
     private ResourceLoader resourceLoader;
 
     @Test
-    void run_shouldLoadDemoItemsWithImages_onlyIntoEmptyCatalog() throws Exception {
+    void load_shouldLoadDemoItemsWithImages_onlyIntoEmptyCatalog() {
         DemoCatalogLoader loader = new DemoCatalogLoader(itemService, objectMapper, resourceLoader);
 
-        loader.run(new DefaultApplicationArguments());
-        long loadedCount = itemRepository.count();
-        loader.run(new DefaultApplicationArguments());
+        StepVerifier.create(loader.load())
+                .assertNext(count -> assertThat(count).isPositive())
+                .verifyComplete();
+        long loadedCount = itemRepository.count().block();
+        StepVerifier.create(loader.load())
+                .expectNext(0L)
+                .verifyComplete();
+        StepVerifier.create(itemRepository.count())
+                .expectNext(loadedCount)
+                .verifyComplete();
 
-        assertThat(loadedCount).isPositive();
-        assertThat(itemRepository.count()).isEqualTo(loadedCount);
-
-        long firstItemId = itemService.findItems("", ItemSort.NO, 1, 1).getContent().getFirst().getId();
-        ImageData image = itemService.getImage(firstItemId);
-        assertThat(image.contentType()).isEqualTo("image/svg+xml");
-        assertThat(image.content()).isNotEmpty();
+        StepVerifier.create(itemService.findItems("", ItemSort.NO, 1, 1)
+                        .flatMap(page -> itemService.getImage(page.getContent().getFirst().getId())))
+                .assertNext(image -> {
+                    assertThat(image.contentType()).isEqualTo("image/svg+xml");
+                    assertThat(image.content()).isNotEmpty();
+                })
+                .verifyComplete();
     }
 }

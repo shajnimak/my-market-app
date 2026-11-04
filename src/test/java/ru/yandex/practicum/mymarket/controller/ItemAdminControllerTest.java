@@ -2,49 +2,41 @@ package ru.yandex.practicum.mymarket.controller;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.web.reactive.function.BodyInserters;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.NewItem;
 
+import java.nio.charset.StandardCharsets;
+
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 class ItemAdminControllerTest extends AbstractControllerTest {
 
     private static final byte[] PNG_CONTENT = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 1, 2, 3};
 
-    private static final MockMultipartFile IMAGE =
-            new MockMultipartFile("image", "ball.png", "image/png", PNG_CONTENT);
-
     @Test
-    void getNewItemForm_shouldRenderForm() throws Exception {
-        mockMvc.perform(get("/admin/items/new"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("new-item"))
-                .andExpect(model().attributeExists("form"));
+    void getNewItemForm_shouldRenderForm() {
+        String html = getHtml("/admin/items/new");
+
+        assertThat(html).contains("action=\"/admin/items\"", "enctype=\"multipart/form-data\"", "name=\"title\"")
+                .doesNotContain("is-invalid");
     }
 
     @Test
-    void createItem_shouldSaveItemAndRedirectToItemPage() throws Exception {
-        when(itemService.createItem(any())).thenReturn(21L);
+    void createItem_shouldSaveItemAndRedirectToItemPage() {
+        when(itemService.createItem(any())).thenReturn(Mono.just(21L));
 
-        mockMvc.perform(multipart("/admin/items")
-                        .file(IMAGE)
-                        .param("title", " Мяч ")
-                        .param("description", "Футбольный")
-                        .param("price", "2500"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/items/21"));
+        webTestClient.post().uri("/admin/items")
+                .body(BodyInserters.fromMultipartData(form(" Мяч ", "Футбольный", "2500", PNG_CONTENT, MediaType.IMAGE_PNG).build()))
+                .exchange()
+                .expectStatus().isSeeOther()
+                .expectHeader().location("/items/21");
 
         ArgumentCaptor<NewItem> captor = ArgumentCaptor.forClass(NewItem.class);
         verify(itemService).createItem(captor.capture());
@@ -57,31 +49,27 @@ class ItemAdminControllerTest extends AbstractControllerTest {
     }
 
     @Test
-    void createItem_shouldRenderFormWithErrors_whenFieldsInvalid() throws Exception {
-        mockMvc.perform(multipart("/admin/items")
-                        .file(IMAGE)
-                        .param("title", "")
-                        .param("description", "Футбольный")
-                        .param("price", "-1"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("new-item"))
-                .andExpect(model().attributeHasFieldErrors("form", "title", "price"));
+    void createItem_shouldRenderFormWithErrors_whenFieldsInvalid() {
+        webTestClient.post().uri("/admin/items")
+                .body(BodyInserters.fromMultipartData(form("", "Футбольный", "-1", PNG_CONTENT, MediaType.IMAGE_PNG).build()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(occurrences(html, "is-invalid")).isEqualTo(2));
 
         verify(itemService, never()).createItem(any());
     }
 
     @Test
-    void createItem_shouldTakeContentTypeFromSignature_notFromClient() throws Exception {
-        when(itemService.createItem(any())).thenReturn(21L);
-        MockMultipartFile disguisedPng =
-                new MockMultipartFile("image", "ball.bin", "application/octet-stream", PNG_CONTENT);
+    void createItem_shouldTakeContentTypeFromSignature_notFromClient() {
+        when(itemService.createItem(any())).thenReturn(Mono.just(21L));
 
-        mockMvc.perform(multipart("/admin/items")
-                        .file(disguisedPng)
-                        .param("title", "Мяч")
-                        .param("description", "Футбольный")
-                        .param("price", "2500"))
-                .andExpect(redirectedUrl("/items/21"));
+        webTestClient.post().uri("/admin/items")
+                .body(BodyInserters.fromMultipartData(
+                        form("Мяч", "Футбольный", "2500", PNG_CONTENT, MediaType.APPLICATION_OCTET_STREAM).build()))
+                .exchange()
+                .expectStatus().isSeeOther()
+                .expectHeader().location("/items/21");
 
         ArgumentCaptor<NewItem> captor = ArgumentCaptor.forClass(NewItem.class);
         verify(itemService).createItem(captor.capture());
@@ -89,47 +77,58 @@ class ItemAdminControllerTest extends AbstractControllerTest {
     }
 
     @Test
-    void createItem_shouldRejectSvgEvenWithImageContentType() throws Exception {
-        MockMultipartFile svg = new MockMultipartFile("image", "ball.svg", "image/svg+xml",
-                "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>".getBytes());
+    void createItem_shouldRejectSvgEvenWithImageContentType() {
+        byte[] svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>"
+                .getBytes(StandardCharsets.UTF_8);
 
-        mockMvc.perform(multipart("/admin/items")
-                        .file(svg)
-                        .param("title", "Мяч")
-                        .param("description", "Футбольный")
-                        .param("price", "2500"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("new-item"))
-                .andExpect(model().attributeHasFieldErrors("form", "image"))
-                .andExpect(content().string(containsString(ItemAdminController.UNSUPPORTED_FORMAT_MESSAGE)));
+        webTestClient.post().uri("/admin/items")
+                .body(BodyInserters.fromMultipartData(
+                        form("Мяч", "Футбольный", "2500", svg, MediaType.valueOf("image/svg+xml")).build()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains(ItemAdminController.UNSUPPORTED_FORMAT_MESSAGE));
 
         verify(itemService, never()).createItem(any());
     }
 
     @Test
-    void createItem_shouldRejectNonImageFile() throws Exception {
-        MockMultipartFile textFile = new MockMultipartFile("image", "notes.png", "image/png", new byte[]{1});
-
-        mockMvc.perform(multipart("/admin/items")
-                        .file(textFile)
-                        .param("title", "Мяч")
-                        .param("description", "Футбольный")
-                        .param("price", "2500"))
-                .andExpect(status().isOk())
-                .andExpect(model().attributeHasFieldErrors("form", "image"));
+    void createItem_shouldRejectNonImageFile() {
+        webTestClient.post().uri("/admin/items")
+                .body(BodyInserters.fromMultipartData(
+                        form("Мяч", "Футбольный", "2500", new byte[]{1}, MediaType.IMAGE_PNG).build()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains(ItemAdminController.UNSUPPORTED_FORMAT_MESSAGE));
 
         verify(itemService, never()).createItem(any());
     }
 
     @Test
-    void createItem_shouldRequireImage() throws Exception {
-        mockMvc.perform(multipart("/admin/items")
-                        .param("title", "Мяч")
-                        .param("description", "Футбольный")
-                        .param("price", "2500"))
-                .andExpect(status().isOk())
-                .andExpect(model().attributeHasFieldErrors("form", "image"));
+    void createItem_shouldRequireImage() {
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("title", "Мяч");
+        builder.part("description", "Футбольный");
+        builder.part("price", "2500");
+
+        webTestClient.post().uri("/admin/items")
+                .body(BodyInserters.fromMultipartData(builder.build()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Выберите изображение товара"));
 
         verify(itemService, never()).createItem(any());
+    }
+
+    private static MultipartBodyBuilder form(String title, String description, String price,
+                                             byte[] image, MediaType imageType) {
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("title", title);
+        builder.part("description", description);
+        builder.part("price", price);
+        builder.part("image", image).filename("upload").contentType(imageType);
+        return builder;
     }
 }

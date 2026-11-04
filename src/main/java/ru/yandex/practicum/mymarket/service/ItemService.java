@@ -1,11 +1,14 @@
 package ru.yandex.practicum.mymarket.service;
 
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.NewItem;
 import ru.yandex.practicum.mymarket.exception.ImageNotFoundException;
@@ -33,36 +36,40 @@ public class ItemService {
         this.itemImageRepository = itemImageRepository;
     }
 
-    public Page<Item> findItems(String search, ItemSort sort, int pageNumber, int pageSize) {
+    public Mono<Page<Item>> findItems(String search, ItemSort sort, int pageNumber, int pageSize) {
         int number = Math.max(pageNumber, 1);
         int size = Math.clamp(pageSize, 1, MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(number - 1, size, sort.toSort());
 
-        return StringUtils.hasText(search)
-                ? itemRepository.search(search.strip(), pageable)
-                : itemRepository.findAll(pageable);
+        boolean filtered = StringUtils.hasText(search);
+        Flux<Item> items = filtered ? itemRepository.search(search.strip(), pageable) : itemRepository.findAllBy(pageable);
+        Mono<Long> total = filtered ? itemRepository.countSearch(search.strip()) : itemRepository.count();
+
+        return items.collectList()
+                .flatMap(pageItems -> total.map(count -> new PageImpl<>(pageItems, pageable, count)));
     }
 
-    public Item getItem(long id) {
+    public Mono<Item> getItem(long id) {
         return itemRepository.findById(id)
-                .orElseThrow(() -> new ItemNotFoundException(id));
+                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(id)));
     }
 
-    public ImageData getImage(long itemId) {
+    public Mono<ImageData> getImage(long itemId) {
         return itemImageRepository.findById(itemId)
                 .map(image -> new ImageData(image.getContentType(), image.getContent()))
-                .orElseThrow(() -> new ImageNotFoundException(itemId));
+                .switchIfEmpty(Mono.error(() -> new ImageNotFoundException(itemId)));
     }
 
-    public boolean isCatalogEmpty() {
-        return itemRepository.count() == 0;
+    public Mono<Boolean> isCatalogEmpty() {
+        return itemRepository.count().map(count -> count == 0);
     }
 
     @Transactional
-    public long createItem(NewItem newItem) {
-        Item item = itemRepository.save(new Item(newItem.title(), newItem.description(), newItem.price()));
+    public Mono<Long> createItem(NewItem newItem) {
         ImageData image = newItem.image();
-        itemImageRepository.save(new ItemImage(item.getId(), image.contentType(), image.content()));
-        return item.getId();
+        return itemRepository.save(new Item(newItem.title(), newItem.description(), newItem.price()))
+                .flatMap(item -> itemImageRepository
+                        .save(ItemImage.newImage(item.getId(), image.contentType(), image.content()))
+                        .thenReturn(item.getId()));
     }
 }
