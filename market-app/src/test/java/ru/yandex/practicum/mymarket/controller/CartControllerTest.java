@@ -1,6 +1,7 @@
 package ru.yandex.practicum.mymarket.controller;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.BodyInserters;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartDto;
@@ -16,6 +17,10 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
+import static ru.yandex.practicum.mymarket.TestData.ALICE;
+import static ru.yandex.practicum.mymarket.TestData.BOB;
 
 class CartControllerTest extends AbstractControllerTest {
 
@@ -25,8 +30,8 @@ class CartControllerTest extends AbstractControllerTest {
 
     @Test
     void getCart_shouldRenderItemsTotalBalanceAndEnabledBuyButton_whenFundsSufficient() {
-        when(cartService.getCart()).thenReturn(Mono.just(new CartDto(List.of(BALL), 5000)));
-        when(purchaseService.getCheckout(5000)).thenReturn(Mono.just(Checkout.forBalance(9000, 5000)));
+        when(cartService.getCart(ALICE.getId())).thenReturn(Mono.just(new CartDto(List.of(BALL), 5000)));
+        when(purchaseService.getCheckout("alice", 5000)).thenReturn(Mono.just(Checkout.forBalance(9000, 5000)));
 
         String html = getHtml("/cart/items");
 
@@ -38,8 +43,8 @@ class CartControllerTest extends AbstractControllerTest {
 
     @Test
     void getCart_shouldDisableBuyButton_whenFundsInsufficient() {
-        when(cartService.getCart()).thenReturn(Mono.just(new CartDto(List.of(BALL), 5000)));
-        when(purchaseService.getCheckout(5000)).thenReturn(Mono.just(Checkout.forBalance(4999, 5000)));
+        when(cartService.getCart(ALICE.getId())).thenReturn(Mono.just(new CartDto(List.of(BALL), 5000)));
+        when(purchaseService.getCheckout("alice", 5000)).thenReturn(Mono.just(Checkout.forBalance(4999, 5000)));
 
         String html = getHtml("/cart/items");
 
@@ -49,8 +54,8 @@ class CartControllerTest extends AbstractControllerTest {
 
     @Test
     void getCart_shouldDisableBuyButtonAndExplain_whenPaymentServiceUnavailable() {
-        when(cartService.getCart()).thenReturn(Mono.just(new CartDto(List.of(BALL), 5000)));
-        when(purchaseService.getCheckout(5000)).thenReturn(Mono.just(Checkout.unavailable()));
+        when(cartService.getCart(ALICE.getId())).thenReturn(Mono.just(new CartDto(List.of(BALL), 5000)));
+        when(purchaseService.getCheckout("alice", 5000)).thenReturn(Mono.just(Checkout.unavailable()));
 
         String html = getHtml("/cart/items");
 
@@ -60,15 +65,15 @@ class CartControllerTest extends AbstractControllerTest {
 
     @Test
     void getCart_shouldHideBuyButton_whenCartEmpty() {
-        when(cartService.getCart()).thenReturn(Mono.just(new CartDto(List.of(), 0)));
-        when(purchaseService.getCheckout(0)).thenReturn(Mono.just(Checkout.emptyCart()));
+        when(cartService.getCart(ALICE.getId())).thenReturn(Mono.just(new CartDto(List.of(), 0)));
+        when(purchaseService.getCheckout("alice", 0)).thenReturn(Mono.just(Checkout.emptyCart()));
 
         assertThat(getHtml("/cart/items")).doesNotContain("action=\"/buy\"");
     }
 
     @Test
     void changeCartQuantity_shouldApplyActionAndRedirectToCart() {
-        when(cartService.changeQuantity(1, CartAction.DELETE)).thenReturn(Mono.empty());
+        when(cartService.changeQuantity(ALICE.getId(), 1, CartAction.DELETE)).thenReturn(Mono.empty());
 
         webTestClient.post().uri("/cart/items")
                 .body(BodyInserters.fromFormData("id", "1").with("action", "DELETE"))
@@ -76,8 +81,8 @@ class CartControllerTest extends AbstractControllerTest {
                 .expectStatus().isSeeOther()
                 .expectHeader().location("/cart/items");
 
-        verify(cartService).changeQuantity(1, CartAction.DELETE);
-        verify(cartService, never()).getCart();
+        verify(cartService).changeQuantity(ALICE.getId(), 1, CartAction.DELETE);
+        verify(cartService, never()).getCart(anyLong());
     }
 
     @Test
@@ -87,6 +92,51 @@ class CartControllerTest extends AbstractControllerTest {
                 .exchange()
                 .expectStatus().isBadRequest();
 
-        verify(cartService, never()).changeQuantity(anyLong(), any());
+        verify(cartService, never()).changeQuantity(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void getCart_shouldReturnUnauthorizedErrorPage_forAnonymous() {
+        String html = anonymousClient.get().uri("/cart/items")
+                .accept(MediaType.TEXT_HTML)
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody(String.class)
+                .returnResult()
+                .getResponseBody();
+
+        assertThat(html).contains("Войдите в магазин", "href=\"/login\"");
+        verify(cartService, never()).getCart(anyLong());
+    }
+
+    @Test
+    void changeCartQuantity_shouldReturnUnauthorized_forAnonymous() {
+        anonymousClient.mutateWith(csrf()).post().uri("/cart/items")
+                .body(BodyInserters.fromFormData("id", "1").with("action", "PLUS"))
+                .exchange()
+                .expectStatus().isUnauthorized();
+
+        verify(cartService, never()).changeQuantity(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void changeCartQuantity_shouldBeForbidden_withoutCsrfToken() {
+        anonymousClient.mutateWith(mockUser("alice")).post().uri("/cart/items")
+                .body(BodyInserters.fromFormData("id", "1").with("action", "PLUS"))
+                .exchange()
+                .expectStatus().isForbidden();
+
+        verify(cartService, never()).changeQuantity(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void getCart_shouldShowCartOfAuthenticatedUserOnly() {
+        when(cartService.getCart(BOB.getId())).thenReturn(Mono.just(new CartDto(List.of(BALL), 5000)));
+        when(purchaseService.getCheckout("bob", 5000)).thenReturn(Mono.just(Checkout.forBalance(9000, 5000)));
+
+        assertThat(getHtml(clientOf(BOB), "/cart/items")).contains("Мяч", "Итого: 5000 руб.");
+
+        verify(cartService).getCart(BOB.getId());
+        verify(cartService, never()).getCart(ALICE.getId());
     }
 }

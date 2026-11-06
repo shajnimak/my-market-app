@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+
+<head th:replace="~{fragments/layout :: head}"></head>
+
+<body class="bg-light">
+    <div class="container p-2">
+        <div th:replace="~{fragments/layout :: header}"></div>
+        <div class="row p-2 justify-content-center">
+            <div class="col-md-5">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Регистрация</h5>
+                        <form th:action="@{/register}" th:object="${form}" method="post">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Логин</label>
+                                <input type="text" class="form-control" th:field="*{username}" th:errorclass="is-invalid" autocomplete="username">
+                                <div class="invalid-feedback" th:errors="*{username}"></div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Пароль</label>
+                                <input type="password" class="form-control" id="password" name="password" autocomplete="new-password"
+                                       th:classappend="${#fields.hasErrors('password') or #fields.hasErrors('passwordFitsBcrypt')} ? 'is-invalid'">
+                                <div class="invalid-feedback" th:errors="*{password}"></div>
+                                <div class="invalid-feedback" th:errors="*{passwordFitsBcrypt}"></div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="confirmPassword" class="form-label">Пароль ещё раз</label>
+                                <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" autocomplete="new-password"
+                                       th:classappend="${#fields.hasErrors('confirmPassword')} ? 'is-invalid'">
+                                <div class="invalid-feedback" th:errors="*{confirmPassword}"></div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
+                            <a href="/login" class="btn btn-link">Уже есть логин</a>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
