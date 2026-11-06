@@ -16,8 +16,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Корзина. В базе хранятся только id товаров и количество, данные товаров берутся
- * из каталога {@link ItemService}, то есть из кеша Redis.
+ * Корзины покупателей. У каждого покупателя своя корзина: все операции принимают id покупателя
+ * и работают только с его позициями. В базе хранятся только id товаров и количество, данные товаров
+ * берутся из каталога {@link ItemService}, то есть из кеша Redis.
  */
 @Service
 @Transactional(readOnly = true)
@@ -32,55 +33,55 @@ public class CartService {
     }
 
     @Transactional
-    public Mono<Void> changeQuantity(long itemId, CartAction action) {
+    public Mono<Void> changeQuantity(long userId, long itemId, CartAction action) {
         return switch (action) {
-            case PLUS -> increase(itemId);
-            case MINUS -> decrease(itemId);
-            case DELETE -> cartItemRepository.findByItemId(itemId).flatMap(cartItemRepository::delete);
+            case PLUS -> increase(userId, itemId);
+            case MINUS -> decrease(userId, itemId);
+            case DELETE -> cartItemRepository.findByUserIdAndItemId(userId, itemId).flatMap(cartItemRepository::delete);
         };
     }
 
-    public Mono<CartDto> getCart() {
-        return getCartLines()
+    public Mono<CartDto> getCart(long userId) {
+        return getCartLines(userId)
                 .collectList()
                 .map(CartService::toCart);
     }
 
-    public Flux<CartLine> getCartLines() {
-        return cartItemRepository.findAllByOrderByIdAsc()
+    public Flux<CartLine> getCartLines(long userId) {
+        return cartItemRepository.findByUserIdOrderByIdAsc(userId)
                 .flatMapSequential(cartItem -> itemService.getItem(cartItem.getItemId())
                         .map(card -> ItemMapper.toCartLine(card, cartItem.getQuantity())));
     }
 
-    public Mono<Integer> getCount(long itemId) {
-        return cartItemRepository.findByItemId(itemId)
+    public Mono<Integer> getCount(long userId, long itemId) {
+        return cartItemRepository.findByUserIdAndItemId(userId, itemId)
                 .map(CartItem::getQuantity)
                 .defaultIfEmpty(0);
     }
 
-    public Mono<Map<Long, Integer>> getCounts(Collection<Long> itemIds) {
+    public Mono<Map<Long, Integer>> getCounts(long userId, Collection<Long> itemIds) {
         if (itemIds.isEmpty()) {
             return Mono.just(Map.of());
         }
-        return cartItemRepository.findByItemIdIn(itemIds)
+        return cartItemRepository.findByUserIdAndItemIdIn(userId, itemIds)
                 .collectMap(CartItem::getItemId, CartItem::getQuantity);
     }
 
     @Transactional
-    public Mono<Void> clear() {
-        return cartItemRepository.deleteAll();
+    public Mono<Void> clear(long userId) {
+        return cartItemRepository.deleteByUserId(userId);
     }
 
-    private Mono<Void> increase(long itemId) {
-        return cartItemRepository.findByItemId(itemId)
+    private Mono<Void> increase(long userId, long itemId) {
+        return cartItemRepository.findByUserIdAndItemId(userId, itemId)
                 .doOnNext(CartItem::increment)
-                .switchIfEmpty(Mono.defer(() -> itemService.getItem(itemId).map(card -> new CartItem(itemId))))
+                .switchIfEmpty(Mono.defer(() -> itemService.getItem(itemId).map(card -> new CartItem(userId, itemId))))
                 .flatMap(cartItemRepository::save)
                 .then();
     }
 
-    private Mono<Void> decrease(long itemId) {
-        return cartItemRepository.findByItemId(itemId)
+    private Mono<Void> decrease(long userId, long itemId) {
+        return cartItemRepository.findByUserIdAndItemId(userId, itemId)
                 .flatMap(cartItem -> cartItem.decrement()
                         ? cartItemRepository.save(cartItem).then()
                         : cartItemRepository.delete(cartItem));

@@ -7,14 +7,21 @@ import ru.yandex.practicum.mymarket.model.CartItem;
 
 import java.util.Collection;
 
+/**
+ * Позиции корзин. Все запросы ограничены корзиной одного покупателя ({@code userId}).
+ */
 public interface CartItemRepository extends R2dbcRepository<CartItem, Long> {
 
-    Mono<CartItem> findByItemId(Long itemId);
+    Mono<CartItem> findByUserIdAndItemId(Long userId, Long itemId);
 
-    Flux<CartItem> findByItemIdIn(Collection<Long> itemIds);
+    Flux<CartItem> findByUserIdAndItemIdIn(Long userId, Collection<Long> itemIds);
 
     /**
-     * Позиции корзины в порядке добавления. Данные товаров для них берутся из кеша каталога.
+     * Позиции корзины покупателя в порядке добавления. Данные товаров для них берутся из кеша каталога.
      */
-    Flux<CartItem> findAllByOrderByIdAsc();
+    Flux<CartItem> findByUserIdOrderByIdAsc(Long userId);
+
+    Mono<Long> countByUserId(Long userId);
+
+    Mono<Void> deleteByUserId(Long userId);
 }

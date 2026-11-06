@@ -5,11 +5,16 @@ import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.LocalDateTime;
 
+/**
+ * Заказ покупателя {@code userId}.
+ */
 @Table("orders")
 public class Order {
 
     @Id
     private Long id;
+
+    private Long userId;
 
     private LocalDateTime createdAt;
 
@@ -18,13 +23,18 @@ public class Order {
     protected Order() {
     }
 
-    public Order(LocalDateTime createdAt, long totalSum) {
+    public Order(Long userId, LocalDateTime createdAt, long totalSum) {
+        this.userId = userId;
         this.createdAt = createdAt;
         this.totalSum = totalSum;
     }
 
     public Long getId() {
         return id;
+    }
+
+    public Long getUserId() {
+        return userId;
     }
 
     public LocalDateTime getCreatedAt() {

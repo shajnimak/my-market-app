@@ -3,11 +3,16 @@ package ru.yandex.practicum.mymarket.model;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
+/**
+ * Позиция корзины покупателя {@code userId}: у каждого покупателя своя корзина.
+ */
 @Table("cart_items")
 public class CartItem {
 
     @Id
     private Long id;
+
+    private Long userId;
 
     private Long itemId;
 
@@ -16,7 +21,8 @@ public class CartItem {
     protected CartItem() {
     }
 
-    public CartItem(Long itemId) {
+    public CartItem(Long userId, Long itemId) {
+        this.userId = userId;
         this.itemId = itemId;
         this.quantity = 1;
     }
@@ -41,6 +47,10 @@ public class CartItem {
 
     public Long getId() {
         return id;
+    }
+
+    public Long getUserId() {
+        return userId;
     }
 
     public Long getItemId() {

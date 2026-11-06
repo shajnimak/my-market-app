@@ -20,12 +20,15 @@ import java.util.Map;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static ru.yandex.practicum.mymarket.TestData.card;
 import static ru.yandex.practicum.mymarket.TestData.summary;
 
 @ExtendWith(MockitoExtension.class)
 class ShowcaseServiceTest {
+
+    private static final long USER_ID = 10;
 
     @Mock
     private ItemService itemService;
@@ -41,9 +44,9 @@ class ShowcaseServiceTest {
         when(itemService.findItems("мяч", ItemSort.PRICE, 2, 2))
                 .thenReturn(Mono.just(new CatalogPage(
                         List.of(summary(1, "Мяч", 2500), summary(2, "Ракетка", 7800)), 2, 2, 5)));
-        when(cartService.getCounts(List.of(1L, 2L))).thenReturn(Mono.just(Map.of(2L, 3)));
+        when(cartService.getCounts(USER_ID, List.of(1L, 2L))).thenReturn(Mono.just(Map.of(2L, 3)));
 
-        StepVerifier.create(showcaseService.findItems("мяч", ItemSort.PRICE, 2, 2))
+        StepVerifier.create(showcaseService.findItems(USER_ID, "мяч", ItemSort.PRICE, 2, 2))
                 .expectNext(new ItemsPage(List.of(
                         new ItemDto(1, "Мяч", "Описание Мяч", "images/1", 2500, 0),
                         new ItemDto(2, "Ракетка", "Описание Ракетка", "images/2", 7800, 3)
@@ -55,9 +58,9 @@ class ShowcaseServiceTest {
     void findItems_shouldReturnEmptyPage_whenNothingFound() {
         when(itemService.findItems("велосипед", ItemSort.NO, 1, 5))
                 .thenReturn(Mono.just(new CatalogPage(List.of(), 1, 5, 0)));
-        when(cartService.getCounts(List.of())).thenReturn(Mono.just(Map.of()));
+        when(cartService.getCounts(USER_ID, List.of())).thenReturn(Mono.just(Map.of()));
 
-        StepVerifier.create(showcaseService.findItems("велосипед", ItemSort.NO, 1, 5))
+        StepVerifier.create(showcaseService.findItems(USER_ID, "велосипед", ItemSort.NO, 1, 5))
                 .expectNext(new ItemsPage(List.of(), new Paging(5, 1, false, false)))
                 .verifyComplete();
     }
@@ -65,9 +68,9 @@ class ShowcaseServiceTest {
     @Test
     void getItem_shouldReturnItemWithCartCount() {
         when(itemService.getItem(1)).thenReturn(Mono.just(card(1, "Мяч", 2500)));
-        when(cartService.getCount(1)).thenReturn(Mono.just(2));
+        when(cartService.getCount(USER_ID, 1)).thenReturn(Mono.just(2));
 
-        StepVerifier.create(showcaseService.getItem(1))
+        StepVerifier.create(showcaseService.getItem(USER_ID, 1))
                 .expectNext(new ItemDto(1, "Мяч", "Описание Мяч", "images/1", 2500, 2))
                 .verifyComplete();
     }
@@ -76,10 +79,34 @@ class ShowcaseServiceTest {
     void getItem_shouldNotAskCart_whenItemMissing() {
         when(itemService.getItem(99)).thenReturn(Mono.error(new ItemNotFoundException(99)));
 
-        StepVerifier.create(showcaseService.getItem(99))
+        StepVerifier.create(showcaseService.getItem(USER_ID, 99))
                 .expectError(ItemNotFoundException.class)
                 .verify();
 
-        verify(cartService, never()).getCount(anyLong());
+        verify(cartService, never()).getCount(anyLong(), anyLong());
+    }
+
+    @Test
+    void findItems_shouldShowZeroCountsWithoutAskingCart_forAnonymous() {
+        when(itemService.findItems("", ItemSort.NO, 1, 5))
+                .thenReturn(Mono.just(new CatalogPage(List.of(summary(1, "Мяч", 2500)), 1, 5, 1)));
+
+        StepVerifier.create(showcaseService.findItems(null, "", ItemSort.NO, 1, 5))
+                .expectNext(new ItemsPage(List.of(new ItemDto(1, "Мяч", "Описание Мяч", "images/1", 2500, 0)),
+                        new Paging(5, 1, false, false)))
+                .verifyComplete();
+
+        verifyNoInteractions(cartService);
+    }
+
+    @Test
+    void getItem_shouldShowZeroCountWithoutAskingCart_forAnonymous() {
+        when(itemService.getItem(1)).thenReturn(Mono.just(card(1, "Мяч", 2500)));
+
+        StepVerifier.create(showcaseService.getItem(null, 1))
+                .expectNext(new ItemDto(1, "Мяч", "Описание Мяч", "images/1", 2500, 0))
+                .verifyComplete();
+
+        verifyNoInteractions(cartService);
     }
 }

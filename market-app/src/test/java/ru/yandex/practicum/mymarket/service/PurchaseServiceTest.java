@@ -12,6 +12,7 @@ import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.dto.Checkout;
 import ru.yandex.practicum.mymarket.exception.EmptyCartException;
 import ru.yandex.practicum.mymarket.exception.InsufficientFundsException;
+import ru.yandex.practicum.mymarket.exception.PaymentAuthorizationException;
 import ru.yandex.practicum.mymarket.exception.PaymentServiceUnavailableException;
 import ru.yandex.practicum.mymarket.model.CartLine;
 
@@ -19,6 +20,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -42,6 +44,9 @@ class PurchaseServiceTest {
     @InjectMocks
     private PurchaseService purchaseService;
 
+    private static final long USER_ID = 10;
+    private static final String USERNAME = "alice";
+
     private final List<CartLine> cartLines = List.of(
             cartLine(item(1, "Мяч", 2500), 2),
             cartLine(item(2, "Ракетка", 7800), 1)
@@ -49,92 +54,102 @@ class PurchaseServiceTest {
 
     @Test
     void buy_shouldPayCartTotal_thenCreateOrderAndClearCart() {
-        when(cartService.getCartLines()).thenReturn(Flux.fromIterable(cartLines));
-        when(paymentService.pay(12_800)).thenReturn(Mono.just(87_200L));
-        when(orderService.createOrder(cartLines)).thenReturn(Mono.just(7L));
-        when(cartService.clear()).thenReturn(Mono.empty());
+        when(cartService.getCartLines(USER_ID)).thenReturn(Flux.fromIterable(cartLines));
+        when(paymentService.pay(USERNAME, 12_800)).thenReturn(Mono.just(87_200L));
+        when(orderService.createOrder(USER_ID, cartLines)).thenReturn(Mono.just(7L));
+        when(cartService.clear(USER_ID)).thenReturn(Mono.empty());
 
-        StepVerifier.create(purchaseService.buy())
+        StepVerifier.create(purchaseService.buy(USER_ID, USERNAME))
                 .expectNext(7L)
                 .verifyComplete();
 
         InOrder inOrder = inOrder(paymentService, orderService, cartService);
-        inOrder.verify(paymentService).pay(12_800);
-        inOrder.verify(orderService).createOrder(cartLines);
-        inOrder.verify(cartService).clear();
+        inOrder.verify(paymentService).pay(USERNAME, 12_800);
+        inOrder.verify(orderService).createOrder(USER_ID, cartLines);
+        inOrder.verify(cartService).clear(USER_ID);
     }
 
     @Test
     void buy_shouldNotCreateOrder_whenPaymentDeclined() {
-        when(cartService.getCartLines()).thenReturn(Flux.fromIterable(cartLines));
-        when(paymentService.pay(12_800)).thenReturn(Mono.error(new InsufficientFundsException("Недостаточно средств")));
+        when(cartService.getCartLines(USER_ID)).thenReturn(Flux.fromIterable(cartLines));
+        when(paymentService.pay(USERNAME, 12_800)).thenReturn(Mono.error(new InsufficientFundsException("Недостаточно средств")));
 
-        StepVerifier.create(purchaseService.buy())
+        StepVerifier.create(purchaseService.buy(USER_ID, USERNAME))
                 .expectError(InsufficientFundsException.class)
                 .verify();
 
-        verify(orderService, never()).createOrder(any());
-        verify(cartService, never()).clear();
+        verify(orderService, never()).createOrder(anyLong(), any());
+        verify(cartService, never()).clear(anyLong());
     }
 
     @Test
     void buy_shouldNotCreateOrder_whenPaymentServiceUnavailable() {
-        when(cartService.getCartLines()).thenReturn(Flux.fromIterable(cartLines));
-        when(paymentService.pay(12_800))
+        when(cartService.getCartLines(USER_ID)).thenReturn(Flux.fromIterable(cartLines));
+        when(paymentService.pay(USERNAME, 12_800))
                 .thenReturn(Mono.error(new PaymentServiceUnavailableException(new RuntimeException("down"))));
 
-        StepVerifier.create(purchaseService.buy())
+        StepVerifier.create(purchaseService.buy(USER_ID, USERNAME))
                 .expectError(PaymentServiceUnavailableException.class)
                 .verify();
 
-        verify(orderService, never()).createOrder(any());
-        verify(cartService, never()).clear();
+        verify(orderService, never()).createOrder(anyLong(), any());
+        verify(cartService, never()).clear(anyLong());
     }
 
     @Test
     void buy_shouldFailWithoutPayment_whenCartIsEmpty() {
-        when(cartService.getCartLines()).thenReturn(Flux.empty());
+        when(cartService.getCartLines(USER_ID)).thenReturn(Flux.empty());
 
-        StepVerifier.create(purchaseService.buy())
+        StepVerifier.create(purchaseService.buy(USER_ID, USERNAME))
                 .expectError(EmptyCartException.class)
                 .verify();
 
-        verify(paymentService, never()).pay(anyLong());
-        verify(orderService, never()).createOrder(any());
-        verify(cartService, never()).clear();
+        verify(paymentService, never()).pay(anyString(), anyLong());
+        verify(orderService, never()).createOrder(anyLong(), any());
+        verify(cartService, never()).clear(anyLong());
     }
 
     @Test
     void getCheckout_shouldBeAvailable_whenBalanceCoversTotal() {
-        when(paymentService.getBalance()).thenReturn(Mono.just(12_800L));
+        when(paymentService.getBalance(USERNAME)).thenReturn(Mono.just(12_800L));
 
-        StepVerifier.create(purchaseService.getCheckout(12_800))
+        StepVerifier.create(purchaseService.getCheckout(USERNAME, 12_800))
                 .expectNext(new Checkout(Checkout.Status.AVAILABLE, 12_800L))
                 .verifyComplete();
     }
 
     @Test
     void getCheckout_shouldReportInsufficientFunds_whenBalanceBelowTotal() {
-        when(paymentService.getBalance()).thenReturn(Mono.just(12_799L));
+        when(paymentService.getBalance(USERNAME)).thenReturn(Mono.just(12_799L));
 
-        StepVerifier.create(purchaseService.getCheckout(12_800))
+        StepVerifier.create(purchaseService.getCheckout(USERNAME, 12_800))
                 .expectNext(new Checkout(Checkout.Status.INSUFFICIENT_FUNDS, 12_799L))
                 .verifyComplete();
     }
 
     @Test
     void getCheckout_shouldReportUnavailable_whenPaymentServiceFails() {
-        when(paymentService.getBalance())
+        when(paymentService.getBalance(USERNAME))
                 .thenReturn(Mono.error(new PaymentServiceUnavailableException(new RuntimeException("down"))));
 
-        StepVerifier.create(purchaseService.getCheckout(12_800))
+        StepVerifier.create(purchaseService.getCheckout(USERNAME, 12_800))
+                .expectNext(Checkout.unavailable())
+                .verifyComplete();
+    }
+
+    @Test
+    void getCheckout_shouldReportUnavailable_whenMarketNotAuthorizedInPaymentService() {
+        when(paymentService.getBalance(USERNAME))
+                .thenReturn(Mono.error(new PaymentAuthorizationException(new RuntimeException("invalid_client"))));
+
+        StepVerifier.create(purchaseService.getCheckout(USERNAME, 12_800))
                 .expectNext(Checkout.unavailable())
                 .verifyComplete();
     }
 
     @Test
     void getCheckout_shouldNotCallPaymentService_whenCartEmpty() {
-        StepVerifier.create(purchaseService.getCheckout(0))
+        StepVerifier.create(purchaseService.getCheckout(USERNAME, 0))
                 .expectNext(Checkout.emptyCart())
                 .verifyComplete();
 

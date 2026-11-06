@@ -9,7 +9,9 @@ import ru.yandex.practicum.mymarket.exception.PaymentServiceUnavailableException
 import ru.yandex.practicum.mymarket.model.CartLine;
 
 /**
- * Покупка: оплата суммы корзины через сервис платежей и перенос корзины в новый заказ.
+ * Покупка: оплата суммы корзины покупателя с его счёта в сервисе платежей и перенос корзины в новый заказ.
+ * Покупатель передаётся двумя идентификаторами: id — для корзины и заказов в базе витрины,
+ * логин — для счёта в сервисе платежей.
  */
 @Service
 public class PurchaseService {
@@ -25,32 +27,34 @@ public class PurchaseService {
     }
 
     /**
-     * Проверяет по балансу в сервисе платежей, можно ли оплатить корзину на сумму {@code total}.
+     * Проверяет по балансу счёта покупателя в сервисе платежей, можно ли оплатить корзину на сумму {@code total}.
      * Недоступность сервиса платежей — не ошибка страницы, а состояние, о котором сообщается пользователю.
      */
-    public Mono<Checkout> getCheckout(long total) {
+    public Mono<Checkout> getCheckout(String username, long total) {
         if (total <= 0) {
             return Mono.just(Checkout.emptyCart());
         }
-        return paymentService.getBalance()
+        return paymentService.getBalance(username)
                 .map(balance -> Checkout.forBalance(balance, total))
                 .onErrorResume(PaymentServiceUnavailableException.class, error -> Mono.just(Checkout.unavailable()));
     }
 
     /**
-     * Списывает сумму корзины в сервисе платежей и только после успешной оплаты оформляет заказ и очищает корзину.
-     * Если платёж отклонён или сервис недоступен, заказ не создаётся и корзина не меняется.
+     * Списывает сумму корзины покупателя с его счёта и только после успешной оплаты оформляет заказ
+     * и очищает корзину. Если платёж отклонён или сервис недоступен, заказ не создаётся и корзина не меняется.
      *
+     * @param userId   id покупателя в витрине
+     * @param username логин покупателя — по нему сервис платежей находит счёт
      * @return id нового заказа
      */
     @Transactional
-    public Mono<Long> buy() {
-        return cartService.getCartLines()
+    public Mono<Long> buy(long userId, String username) {
+        return cartService.getCartLines(userId)
                 .collectList()
                 .filter(cartLines -> !cartLines.isEmpty())
                 .switchIfEmpty(Mono.error(EmptyCartException::new))
-                .flatMap(cartLines -> paymentService.pay(CartLine.total(cartLines))
-                        .then(Mono.defer(() -> orderService.createOrder(cartLines))))
-                .flatMap(orderId -> cartService.clear().thenReturn(orderId));
+                .flatMap(cartLines -> paymentService.pay(username, CartLine.total(cartLines))
+                        .then(Mono.defer(() -> orderService.createOrder(userId, cartLines))))
+                .flatMap(orderId -> cartService.clear(userId).thenReturn(orderId));
     }
 }
