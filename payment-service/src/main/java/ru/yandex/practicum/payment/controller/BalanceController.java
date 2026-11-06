@@ -10,6 +10,7 @@ import ru.yandex.practicum.payment.service.AccountService;
 
 /**
  * Реализация сгенерированного по OpenAPI интерфейса {@link BalanceApi}: маппинг и формат ответа заданы спецификацией.
+ * Доступ — только со скоупом {@code payments.read} (см. {@code SecurityConfig}).
  */
 @RestController
 public class BalanceController implements BalanceApi {
@@ -21,8 +22,8 @@ public class BalanceController implements BalanceApi {
     }
 
     @Override
-    public Mono<ResponseEntity<Balance>> getBalance(ServerWebExchange exchange) {
-        return accountService.getBalance()
+    public Mono<ResponseEntity<Balance>> getBalance(String username, ServerWebExchange exchange) {
+        return accountService.getBalance(username)
                 .map(amount -> ResponseEntity.ok(new Balance(amount)));
     }
 }
