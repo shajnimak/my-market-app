@@ -11,7 +11,7 @@
 	<artifactId>market-app</artifactId>
 	<packaging>jar</packaging>
 	<name>market-app</name>
-	<description>Витрина интернет-магазина на Spring Boot (WebFlux + Data R2DBC)</description>
+	<description>Витрина интернет-магазина на Spring Boot (WebFlux + Data R2DBC + Spring Security)</description>
 
 	<dependencies>
 		<dependency>
@@ -34,6 +34,21 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-redis-reactive</artifactId>
 		</dependency>
+		<!-- Вход покупателей по логину и паролю -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<!-- Получение токена сервера авторизации (Client Credentials Flow) для запросов в сервис платежей -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-client</artifactId>
+		</dependency>
+		<!-- sec:authorize и sec:authentication в шаблонах -->
+		<dependency>
+			<groupId>org.thymeleaf.extras</groupId>
+			<artifactId>thymeleaf-extras-springsecurity6</artifactId>
+		</dependency>
 		<!-- @Generated и @Nullable в сгенерированном клиенте сервиса платежей -->
 		<dependency>
 			<groupId>jakarta.annotation</groupId>
@@ -53,6 +68,11 @@
 		<dependency>
 			<groupId>io.projectreactor</groupId>
 			<artifactId>reactor-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<!-- Настоящий Redis в Docker-контейнере для интеграционных тестов -->
