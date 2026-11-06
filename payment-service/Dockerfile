@@ -1,10 +1,11 @@
 # Образ собирается из корня мультипроекта: docker build -f payment-service/Dockerfile .
-# Сборка executable JAR вместе с тестами: внешних зависимостей у сервиса нет,
+# Сборка executable JAR вместе с тестами: сервер авторизации в тестах заменён JWK Set тестового ключа,
 # серверные интерфейсы генерируются из общей спецификации openapi/payment-api.yaml.
 FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY pom.xml .
 COPY openapi openapi
+COPY auth-server/pom.xml auth-server/
 COPY market-app/pom.xml market-app/
 COPY payment-service/pom.xml payment-service/
 RUN mvn -B -q -pl payment-service -am dependency:go-offline

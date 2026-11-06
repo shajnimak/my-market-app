@@ -6,6 +6,7 @@ FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY pom.xml .
 COPY openapi openapi
+COPY auth-server/pom.xml auth-server/
 COPY market-app/pom.xml market-app/
 COPY payment-service/pom.xml payment-service/
 RUN mvn -B -q -pl market-app -am dependency:go-offline
