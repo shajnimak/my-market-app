@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+
+<head th:fragment="head">
+    <meta charset="utf-8">
+    <title>Витрина магазина</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+</head>
+
+<body>
+<!--/* Шапка всех страниц. Ссылки на корзину, заказы и добавление товара видны только вошедшему покупателю:
+       анонимный посетитель видит витрину и кнопки входа и регистрации. */-->
+<div class="row p-2" th:fragment="header">
+    <div class="col">
+        <div class="hstack gap-3">
+            <h2>
+                <span class="badge text-bg-success">Витрина магазина</span>
+            </h2>
+            <div class="ms-auto"></div>
+            <th:block sec:authorize="isAuthenticated()">
+                <a href="/admin/items/new" class="btn btn-outline-success bi bi-plus-square"> Добавить товар</a>
+                <a href="/orders" class="btn btn-secondary bi bi-file-earmark-text"> Заказы</a>
+                <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
+            </th:block>
+            <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> Главная</a>
+            <th:block sec:authorize="isAuthenticated()">
+                <span class="text-secondary bi bi-person-circle"> <span sec:authentication="name"></span></span>
+                <form th:action="@{/logout}" method="post" class="m-0">
+                    <button type="submit" class="btn btn-outline-danger bi bi-box-arrow-right"> Выйти</button>
+                </form>
+            </th:block>
+            <th:block sec:authorize="isAnonymous()">
+                <a href="/login" class="btn btn-primary bi bi-box-arrow-in-right"> Войти</a>
+                <a href="/register" class="btn btn-outline-primary bi bi-person-plus"> Регистрация</a>
+            </th:block>
+        </div>
+    </div>
+</div>
+
+<th:block th:fragment="scripts">
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.min.js" integrity="sha384-G/EV+4j2dNv+tEPo3++6LCgdCROaejBqfUeNjuKAiuXbjrxilcCdDz6ZAVfHWe1Y" crossorigin="anonymous"></script>
+</th:block>
+</body>
+
+</html>

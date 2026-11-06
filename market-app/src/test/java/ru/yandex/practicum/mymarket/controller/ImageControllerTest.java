@@ -45,4 +45,13 @@ class ImageControllerTest extends AbstractControllerTest {
                 .exchange()
                 .expectStatus().isNotFound();
     }
+
+    @Test
+    void getImage_shouldBeAvailable_forAnonymous() {
+        when(itemService.getImage(1)).thenReturn(Mono.just(new ImageData("image/png", new byte[]{1})));
+
+        anonymousClient.get().uri("/images/1")
+                .exchange()
+                .expectStatus().isOk();
+    }
 }

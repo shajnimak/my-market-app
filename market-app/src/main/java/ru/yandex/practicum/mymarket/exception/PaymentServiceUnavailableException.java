@@ -10,6 +10,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 public class PaymentServiceUnavailableException extends RuntimeException {
 
     public PaymentServiceUnavailableException(Throwable cause) {
-        super("Сервис платежей недоступен, попробуйте оформить заказ позже", cause);
+        this("Сервис платежей недоступен, попробуйте оформить заказ позже", cause);
+    }
+
+    protected PaymentServiceUnavailableException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

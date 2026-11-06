@@ -3,24 +3,35 @@ info:
   title: Payment Service API
   description: |
     Интеграция витрины интернет-магазина с сервисом платежей.
-    Витрина запрашивает баланс счёта, чтобы показать, доступна ли покупка,
-    и списывает сумму заказа при его оформлении. Все суммы — целые рубли.
+    Витрина запрашивает баланс счёта покупателя, чтобы показать, доступна ли покупка,
+    и списывает сумму заказа при его оформлении. У каждого покупателя свой счёт,
+    он определяется логином покупателя в витрине. Все суммы — целые рубли.
+
+    Запросы принимаются только от клиента, авторизованного на сервере авторизации OAuth2
+    по Client Credentials Flow: access-токен передаётся в заголовке `Authorization: Bearer ...`.
   version: 1.0.0
 servers:
   - url: http://localhost:8081
     description: Локальный запуск сервиса платежей
+security:
+  - oauth2: []
 tags:
   - name: Balance
     description: Баланс счёта
   - name: Payments
     description: Списание средств
 paths:
-  /api/balance:
+  /api/accounts/{username}/balance:
+    parameters:
+      - $ref: '#/components/parameters/Username'
     get:
       tags:
         - Balance
       operationId: getBalance
-      summary: Получить текущий баланс счёта
+      summary: Получить текущий баланс счёта покупателя
+      security:
+        - oauth2:
+            - payments.read
       responses:
         '200':
           description: Текущий баланс
@@ -28,15 +39,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Balance'
-  /api/payments:
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/accounts/{username}/payments:
+    parameters:
+      - $ref: '#/components/parameters/Username'
     post:
       tags:
         - Payments
       operationId: makePayment
-      summary: Списать сумму заказа со счёта
+      summary: Списать сумму заказа со счёта покупателя
       description: |
         Списание выполняется, только если баланса хватает на всю сумму.
         Иначе баланс не меняется и возвращается ошибка 402.
+      security:
+        - oauth2:
+            - payments.write
       requestBody:
         required: true
         content:
@@ -51,18 +73,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaymentResponse'
         '400':
-          description: Некорректный запрос (например, сумма не положительная)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '402':
           description: Недостаточно средств на счёте
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: Токен сервера авторизации, выданный витрине по Client Credentials Flow
+      flows:
+        clientCredentials:
+          tokenUrl: http://localhost:9000/oauth2/token
+          scopes:
+            payments.read: Просмотр баланса счетов
+            payments.write: Списание средств со счетов
+  parameters:
+    Username:
+      name: username
+      in: path
+      required: true
+      description: Логин покупателя в витрине, к которому привязан счёт
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_.-]{3,50}$'
+        example: alice
+  responses:
+    InvalidRequest:
+      description: Некорректный запрос (например, сумма не положительная или недопустимый логин)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Нет access-токена, он просрочен, подписан чужим ключом или выдан не для сервиса платежей
+    Forbidden:
+      description: У токена нет нужного скоупа
   schemas:
     Balance:
       type: object

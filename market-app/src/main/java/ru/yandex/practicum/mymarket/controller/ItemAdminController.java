@@ -3,6 +3,7 @@ package ru.yandex.practicum.mymarket.controller;
 import jakarta.validation.Valid;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,9 +22,11 @@ import java.util.Optional;
 /**
  * Добавление товаров на витрину через веб-форму.
  * Формат картинки проверяется по сигнатуре байтов, в базу сохраняется определённый сервером Content-Type.
+ * Доступно только вошедшим покупателям.
  */
 @Controller
 @RequestMapping("/admin/items")
+@PreAuthorize("isAuthenticated()")
 public class ItemAdminController {
 
     static final String UNSUPPORTED_FORMAT_MESSAGE = "Поддерживаются только изображения PNG, JPEG, GIF и WebP";
@@ -35,8 +38,8 @@ public class ItemAdminController {
     }
 
     @GetMapping("/new")
-    public String getNewItemForm(@ModelAttribute("form") NewItemForm form) {
-        return "new-item";
+    public Mono<String> getNewItemForm(@ModelAttribute("form") NewItemForm form) {
+        return Mono.just("new-item");
     }
 
     @PostMapping

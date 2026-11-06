@@ -1,5 +1,6 @@
 package ru.yandex.practicum.mymarket.service;
 
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
@@ -17,6 +18,7 @@ import java.util.Map;
 /**
  * Витрина — фасад над модулями каталога и корзины: товары берутся из {@link ItemService} (через кеш Redis),
  * количество в корзине — из {@link CartService}. Каталог о корзине не знает.
+ * Витрину смотрят и анонимные посетители: у них нет корзины ({@code userId == null}), количество всегда 0.
  */
 @Service
 @Transactional(readOnly = true)
@@ -30,15 +32,29 @@ public class ShowcaseService {
         this.cartService = cartService;
     }
 
-    public Mono<ItemsPage> findItems(String search, ItemSort sort, int pageNumber, int pageSize) {
+    /**
+     * @param userId id покупателя или {@code null} для анонимного посетителя
+     */
+    public Mono<ItemsPage> findItems(@Nullable Long userId, String search, ItemSort sort, int pageNumber, int pageSize) {
         return itemService.findItems(search, sort, pageNumber, pageSize)
-                .flatMap(page -> cartService.getCounts(page.items().stream().map(ItemSummary::id).toList())
+                .flatMap(page -> counts(userId, page)
                         .map(counts -> toItemsPage(page, counts)));
     }
 
-    public Mono<ItemDto> getItem(long id) {
+    /**
+     * @param userId id покупателя или {@code null} для анонимного посетителя
+     */
+    public Mono<ItemDto> getItem(@Nullable Long userId, long id) {
         return itemService.getItem(id)
-                .flatMap(item -> cartService.getCount(id).map(count -> ItemMapper.toDto(item, count)));
+                .flatMap(item -> (userId == null ? Mono.just(0) : cartService.getCount(userId, id))
+                        .map(count -> ItemMapper.toDto(item, count)));
+    }
+
+    private Mono<Map<Long, Integer>> counts(@Nullable Long userId, CatalogPage page) {
+        if (userId == null) {
+            return Mono.just(Map.of());
+        }
+        return cartService.getCounts(userId, page.items().stream().map(ItemSummary::id).toList());
     }
 
     private static ItemsPage toItemsPage(CatalogPage page, Map<Long, Integer> counts) {

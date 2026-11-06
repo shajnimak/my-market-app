@@ -18,7 +18,7 @@ jobs:
           java-version: '21'
           cache: maven
 
-      # Оба модуля: генерация кода по OpenAPI, тесты (Redis поднимается в Testcontainers) и executable JAR
+      # Все модули: генерация кода по OpenAPI, тесты (Redis поднимается в Testcontainers) и executable JAR
       - name: Run tests and build executable JARs
         run: ./mvnw -B verify
 

@@ -1,5 +1,6 @@
 package ru.yandex.practicum.payment.controller;
 
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -27,6 +28,19 @@ public class ApiExceptionHandler {
     public ResponseEntity<ErrorResponse> handleValidation(WebExchangeBindException e) {
         String message = e.getFieldErrors().stream()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        return error(HttpStatus.BAD_REQUEST, CodeEnum.INVALID_REQUEST, message);
+    }
+
+    /**
+     * Нарушение ограничений параметров пути (например, недопустимый логин): интерфейсы контроллеров
+     * помечены {@code @Validated}, поэтому параметры проверяет AOP-прокси.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException e) {
+        String message = e.getConstraintViolations().stream()
+                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
+                .sorted()
                 .collect(Collectors.joining("; "));
         return error(HttpStatus.BAD_REQUEST, CodeEnum.INVALID_REQUEST, message);
     }

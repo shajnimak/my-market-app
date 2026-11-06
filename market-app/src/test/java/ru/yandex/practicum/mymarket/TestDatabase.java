@@ -10,7 +10,7 @@ import reactor.core.publisher.Mono;
  */
 public final class TestDatabase {
 
-    private static final String[] TABLES = {"order_items", "orders", "cart_items", "item_images", "items"};
+    private static final String[] TABLES = {"order_items", "orders", "cart_items", "item_images", "items", "users"};
 
     private TestDatabase() {
     }

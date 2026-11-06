@@ -19,6 +19,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Заказы покупателей. Покупатель видит только свои заказы: чужой заказ для него не существует (404),
+ * чтобы по ответу нельзя было узнать, есть ли заказ с таким номером у кого-то ещё.
+ */
 @Service
 @Transactional(readOnly = true)
 public class OrderService {
@@ -34,10 +38,10 @@ public class OrderService {
     }
 
     /**
-     * Все заказы, новые первыми. Позиции загружаются одним запросом для всех заказов.
+     * Все заказы покупателя, новые первыми. Позиции загружаются одним запросом для всех заказов.
      */
-    public Flux<OrderDto> getOrders() {
-        return orderRepository.findAllByOrderByIdDesc()
+    public Flux<OrderDto> getOrders(long userId) {
+        return orderRepository.findByUserIdOrderByIdDesc(userId)
                 .collectList()
                 .flatMapMany(orders -> loadItems(orders)
                         .flatMapIterable(itemsByOrder -> orders.stream()
@@ -46,8 +50,8 @@ public class OrderService {
                                 .toList()));
     }
 
-    public Mono<OrderDto> getOrder(long id) {
-        return orderRepository.findById(id)
+    public Mono<OrderDto> getOrder(long userId, long id) {
+        return orderRepository.findByIdAndUserId(id, userId)
                 .switchIfEmpty(Mono.error(() -> new OrderNotFoundException(id)))
                 .flatMap(order -> orderItemRepository.findByOrderIdOrderByIdAsc(id)
                         .collectList()
@@ -55,9 +59,9 @@ public class OrderService {
     }
 
     @Transactional
-    public Mono<Long> createOrder(List<CartLine> cartLines) {
+    public Mono<Long> createOrder(long userId, List<CartLine> cartLines) {
         long totalSum = CartLine.total(cartLines);
-        return orderRepository.save(new Order(LocalDateTime.now(clock), totalSum))
+        return orderRepository.save(new Order(userId, LocalDateTime.now(clock), totalSum))
                 .flatMap(order -> orderItemRepository
                         .saveAll(cartLines.stream().map(line -> new OrderItem(order.getId(), line)).toList())
                         .then(Mono.just(order.getId())));

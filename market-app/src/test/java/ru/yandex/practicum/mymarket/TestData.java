@@ -10,6 +10,7 @@ import ru.yandex.practicum.mymarket.mapper.ItemMapper;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.CartLine;
 import ru.yandex.practicum.mymarket.model.Item;
+import ru.yandex.practicum.mymarket.security.MarketUserDetails;
 
 import java.util.function.Supplier;
 
@@ -18,6 +19,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 
 public final class TestData {
+
+    public static final MarketUserDetails ALICE = new MarketUserDetails(1, "alice", "{noop}password");
+    public static final MarketUserDetails BOB = new MarketUserDetails(2, "bob", "{noop}password");
 
     private TestData() {
     }
@@ -48,8 +52,8 @@ public final class TestData {
         return cache;
     }
 
-    public static CartItem cartItem(long itemId, int quantity) {
-        CartItem cartItem = new CartItem(itemId);
+    public static CartItem cartItem(long userId, long itemId, int quantity) {
+        CartItem cartItem = new CartItem(userId, itemId);
         for (int i = 1; i < quantity; i++) {
             cartItem.increment();
         }

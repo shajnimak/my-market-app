@@ -1,4 +1,4 @@
-# Витрина, сервис платежей и Redis одной командой: docker compose up --build
+# Витрина, сервис платежей, сервер авторизации и Redis одной командой: docker compose up --build
 services:
   redis:
     image: redis:7.4-alpine
@@ -10,6 +10,18 @@ services:
       timeout: 3s
       retries: 10
 
+  # Сервер авторизации OAuth2: выдаёт витрине токены по Client Credentials Flow.
+  # iss токенов — адрес, по которому его видят витрина и сервис платежей внутри сети Compose.
+  auth-server:
+    build:
+      context: .
+      dockerfile: auth-server/Dockerfile
+    image: my-market/auth-server
+    ports:
+      - "9000:9000"
+    environment:
+      AUTH_SERVER_ISSUER: http://auth-server:9000
+
   payment-service:
     build:
       context: .
@@ -19,6 +31,10 @@ services:
       - "8081:8081"
     environment:
       PAYMENT_ACCOUNT_INITIAL_BALANCE: ${PAYMENT_INITIAL_BALANCE:-100000}
+      AUTH_SERVER_URL: http://auth-server:9000
+    depends_on:
+      auth-server:
+        condition: service_started
 
   market-app:
     build:
@@ -30,8 +46,12 @@ services:
     environment:
       SPRING_DATA_REDIS_HOST: redis
       MARKET_PAYMENT_URL: http://payment-service:8081
+      AUTH_SERVER_URL: http://auth-server:9000
+      MARKET_APP_CLIENT_SECRET: ${MARKET_APP_CLIENT_SECRET:-market-app-secret}
     depends_on:
       redis:
         condition: service_healthy
+      auth-server:
+        condition: service_started
       payment-service:
         condition: service_started

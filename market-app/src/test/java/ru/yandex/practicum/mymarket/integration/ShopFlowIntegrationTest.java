@@ -8,6 +8,7 @@ import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.web.reactive.function.BodyInserters;
 import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.AbstractIntegrationTest;
+import ru.yandex.practicum.mymarket.PaymentServiceStub.Payment;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.NewItem;
@@ -24,7 +25,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Сквозной сценарий через HTTP: витрина → корзина → покупка → заказы.
+ * Сквозной сценарий вошедшего покупателя через HTTP: витрина → корзина → покупка → заказы.
  */
 class ShopFlowIntegrationTest extends AbstractIntegrationTest {
 
@@ -89,7 +90,7 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
                 .contains("Итого: 2500 руб.")
                 .doesNotContain("Ракетка");
 
-        StepVerifier.create(showcaseService.getItem(ballId).map(ItemDto::count))
+        StepVerifier.create(showcaseService.getItem(alice.getId(), ballId).map(ItemDto::count))
                 .expectNext(1)
                 .verifyComplete();
         assertThat(getHtml("/items/" + ballId)).contains("<span>1</span>");
@@ -115,13 +116,13 @@ class ShopFlowIntegrationTest extends AbstractIntegrationTest {
                 new OrderItemDto(ballId, "Футбольный мяч", 2500, 2),
                 new OrderItemDto(racketId, "Ракетка", 7800, 1)
         ), 12800);
-        StepVerifier.create(orderService.getOrder(orderId))
+        StepVerifier.create(orderService.getOrder(alice.getId(), orderId))
                 .expectNext(expectedOrder)
                 .verifyComplete();
         assertThat(getHtml(location.toString())).contains("Поздравляем", "Заказ №" + orderId, "Сумма: 12800 руб.");
         assertThat(getHtml("/orders")).contains("href=\"/orders/" + orderId + "\"", "Футбольный мяч (2 шт.) 5000 руб.");
-        assertThat(paymentServiceStub.getPayments()).containsExactly(12800L);
-        StepVerifier.create(cartService.getCart())
+        assertThat(paymentServiceStub.getPayments()).containsExactly(new Payment("alice", 12800));
+        StepVerifier.create(cartService.getCart(alice.getId()))
                 .assertNext(cart -> {
                     assertThat(cart.items()).isEmpty();
                     assertThat(cart.total()).isZero();

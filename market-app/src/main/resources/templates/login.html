@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+
+<head th:replace="~{fragments/layout :: head}"></head>
+
+<body class="bg-light">
+    <div class="container p-2">
+        <div th:replace="~{fragments/layout :: header}"></div>
+        <div class="row p-2 justify-content-center">
+            <div class="col-md-5">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Вход</h5>
+                        <div class="alert alert-danger" th:if="${loginError}">Неверный логин или пароль</div>
+                        <div class="alert alert-success" th:if="${registered}">Вы зарегистрированы, войдите с новым логином и паролем</div>
+                        <!--/* Логин и пароль проверяет фильтр Spring Security по POST /login */-->
+                        <form th:action="@{/login}" method="post">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Логин</label>
+                                <input type="text" class="form-control" id="username" name="username" autocomplete="username" required autofocus>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Пароль</label>
+                                <input type="password" class="form-control" id="password" name="password" autocomplete="current-password" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Войти</button>
+                            <a href="/register" class="btn btn-link">Регистрация</a>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

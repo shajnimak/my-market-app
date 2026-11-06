@@ -40,6 +40,8 @@ import static ru.yandex.practicum.mymarket.TestData.item;
 @ExtendWith(MockitoExtension.class)
 class OrderServiceTest {
 
+    private static final long USER_ID = 10;
+
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-03T10:15:00Z"), ZoneOffset.UTC);
 
     @Mock
@@ -65,12 +67,13 @@ class OrderServiceTest {
         when(orderItemRepository.saveAll(anyList()))
                 .thenAnswer(invocation -> Flux.fromIterable(invocation.<List<OrderItem>>getArgument(0)));
 
-        StepVerifier.create(orderService.createOrder(List.of(cartLine(ball, 2), cartLine(racket, 1))))
+        StepVerifier.create(orderService.createOrder(USER_ID, List.of(cartLine(ball, 2), cartLine(racket, 1))))
                 .expectNext(7L)
                 .verifyComplete();
 
         ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
         verify(orderRepository).save(orderCaptor.capture());
+        assertThat(orderCaptor.getValue().getUserId()).isEqualTo(USER_ID);
         assertThat(orderCaptor.getValue().getTotalSum()).isEqualTo(2 * 2500 + 7800);
         assertThat(orderCaptor.getValue().getCreatedAt()).isEqualTo(LocalDateTime.of(2026, 11, 3, 10, 15));
 
@@ -87,13 +90,13 @@ class OrderServiceTest {
 
     @Test
     void getOrder_shouldMapOrderWithItemsToDto() {
-        when(orderRepository.findById(7L)).thenReturn(Mono.just(order(7, 12800)));
+        when(orderRepository.findByIdAndUserId(7L, USER_ID)).thenReturn(Mono.just(order(7, 12800)));
         when(orderItemRepository.findByOrderIdOrderByIdAsc(7L)).thenReturn(Flux.just(
                 new OrderItem(7L, cartLine(ball, 2)),
                 new OrderItem(7L, cartLine(racket, 1))
         ));
 
-        StepVerifier.create(orderService.getOrder(7))
+        StepVerifier.create(orderService.getOrder(USER_ID, 7))
                 .expectNext(new OrderDto(7, List.of(
                         new OrderItemDto(1, "Мяч", 2500, 2),
                         new OrderItemDto(2, "Ракетка", 7800, 1)
@@ -102,10 +105,21 @@ class OrderServiceTest {
     }
 
     @Test
-    void getOrder_shouldFail_whenOrderMissing() {
-        when(orderRepository.findById(99L)).thenReturn(Mono.empty());
+    void getOrder_shouldFail_whenOrderBelongsToAnotherUser() {
+        when(orderRepository.findByIdAndUserId(7L, 11L)).thenReturn(Mono.empty());
 
-        StepVerifier.create(orderService.getOrder(99))
+        StepVerifier.create(orderService.getOrder(11, 7))
+                .expectError(OrderNotFoundException.class)
+                .verify();
+
+        verify(orderItemRepository, never()).findByOrderIdOrderByIdAsc(anyLong());
+    }
+
+    @Test
+    void getOrder_shouldFail_whenOrderMissing() {
+        when(orderRepository.findByIdAndUserId(99L, USER_ID)).thenReturn(Mono.empty());
+
+        StepVerifier.create(orderService.getOrder(USER_ID, 99))
                 .expectError(OrderNotFoundException.class)
                 .verify();
 
@@ -114,13 +128,13 @@ class OrderServiceTest {
 
     @Test
     void getOrders_shouldLoadItemsOfAllOrdersWithOneQuery() {
-        when(orderRepository.findAllByOrderByIdDesc()).thenReturn(Flux.just(order(8, 2500), order(7, 7800)));
+        when(orderRepository.findByUserIdOrderByIdDesc(USER_ID)).thenReturn(Flux.just(order(8, 2500), order(7, 7800)));
         when(orderItemRepository.findByOrderIdInOrderByIdAsc(List.of(8L, 7L))).thenReturn(Flux.just(
                 new OrderItem(7L, cartLine(racket, 1)),
                 new OrderItem(8L, cartLine(ball, 1))
         ));
 
-        StepVerifier.create(orderService.getOrders())
+        StepVerifier.create(orderService.getOrders(USER_ID))
                 .expectNext(new OrderDto(8, List.of(new OrderItemDto(1, "Мяч", 2500, 1)), 2500))
                 .expectNext(new OrderDto(7, List.of(new OrderItemDto(2, "Ракетка", 7800, 1)), 7800))
                 .verifyComplete();
@@ -128,15 +142,15 @@ class OrderServiceTest {
 
     @Test
     void getOrders_shouldNotQueryItems_whenNoOrders() {
-        when(orderRepository.findAllByOrderByIdDesc()).thenReturn(Flux.empty());
+        when(orderRepository.findByUserIdOrderByIdDesc(USER_ID)).thenReturn(Flux.empty());
 
-        StepVerifier.create(orderService.getOrders()).verifyComplete();
+        StepVerifier.create(orderService.getOrders(USER_ID)).verifyComplete();
 
         verify(orderItemRepository, never()).findByOrderIdInOrderByIdAsc(anyCollection());
     }
 
     private static Order order(long id, long totalSum) {
-        return withId(new Order(LocalDateTime.now(CLOCK), totalSum), id);
+        return withId(new Order(USER_ID, LocalDateTime.now(CLOCK), totalSum), id);
     }
 
     private static Order withId(Order order, long id) {

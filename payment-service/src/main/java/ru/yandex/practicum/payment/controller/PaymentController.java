@@ -11,7 +11,8 @@ import ru.yandex.practicum.payment.service.AccountService;
 
 /**
  * Реализация сгенерированного по OpenAPI интерфейса {@link PaymentsApi}.
- * Тело запроса проверяется Bean Validation по ограничениям из спецификации, ошибки переводит {@link ApiExceptionHandler}.
+ * Тело запроса и логин проверяются Bean Validation по ограничениям из спецификации, ошибки переводит {@link ApiExceptionHandler}.
+ * Доступ — только со скоупом {@code payments.write} (см. {@code SecurityConfig}).
  */
 @RestController
 public class PaymentController implements PaymentsApi {
@@ -23,9 +24,10 @@ public class PaymentController implements PaymentsApi {
     }
 
     @Override
-    public Mono<ResponseEntity<PaymentResponse>> makePayment(Mono<PaymentRequest> paymentRequest,
+    public Mono<ResponseEntity<PaymentResponse>> makePayment(String username,
+                                                             Mono<PaymentRequest> paymentRequest,
                                                              ServerWebExchange exchange) {
-        return paymentRequest.flatMap(request -> accountService.withdraw(request.getAmount())
+        return paymentRequest.flatMap(request -> accountService.withdraw(username, request.getAmount())
                 .map(balance -> ResponseEntity.ok(new PaymentResponse(request.getAmount(), balance))));
     }
 }

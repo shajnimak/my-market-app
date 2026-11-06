@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
 
 class ItemAdminControllerTest extends AbstractControllerTest {
 
@@ -130,5 +131,18 @@ class ItemAdminControllerTest extends AbstractControllerTest {
         builder.part("price", price);
         builder.part("image", image).filename("upload").contentType(imageType);
         return builder;
+    }
+
+    @Test
+    void addItem_shouldReturnUnauthorized_forAnonymous() {
+        anonymousClient.get().uri("/admin/items/new")
+                .exchange()
+                .expectStatus().isUnauthorized();
+        anonymousClient.mutateWith(csrf()).post().uri("/admin/items")
+                .body(BodyInserters.fromMultipartData(form("Мяч", "Футбольный", "2500", PNG_CONTENT, MediaType.IMAGE_PNG).build()))
+                .exchange()
+                .expectStatus().isUnauthorized();
+
+        verify(itemService, never()).createItem(any());
     }
 }
