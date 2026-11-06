@@ -13,10 +13,6 @@
 	<name>market-app</name>
 	<description>Витрина интернет-магазина на Spring Boot (WebFlux + Data R2DBC)</description>
 
-	<properties>
-		<mockwebserver.version>4.12.0</mockwebserver.version>
-	</properties>
-
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -74,7 +70,6 @@
 		<dependency>
 			<groupId>com.squareup.okhttp3</groupId>
 			<artifactId>mockwebserver</artifactId>
-			<version>${mockwebserver.version}</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
