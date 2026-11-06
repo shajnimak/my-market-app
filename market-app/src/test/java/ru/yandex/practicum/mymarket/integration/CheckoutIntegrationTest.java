@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.reactive.function.BodyInserters;
 import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.AbstractIntegrationTest;
+import ru.yandex.practicum.mymarket.PaymentServiceStub.Payment;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.NewItem;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
@@ -15,7 +16,7 @@ import ru.yandex.practicum.mymarket.service.ItemService;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Страница корзины и кнопка «Купить» в зависимости от ответа сервиса платежей (заглушки по HTTP).
+ * Страница корзины и кнопка «Купить» покупателя alice в зависимости от ответа сервиса платежей (заглушки по HTTP).
  */
 class CheckoutIntegrationTest extends AbstractIntegrationTest {
 
@@ -40,7 +41,7 @@ class CheckoutIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void cartPage_shouldEnableBuyButton_whenBalanceCoversTotal() {
-        paymentServiceStub.setBalance(7800);
+        paymentServiceStub.setBalance("alice", 7800);
 
         assertThat(getCartHtml())
                 .contains("Итого: 7800 руб.", "На счёте: 7800 руб.", "<button class=\"btn btn-warning\">Купить</button>")
@@ -49,7 +50,7 @@ class CheckoutIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void cartPage_shouldDisableBuyButton_whenBalanceBelowTotal() {
-        paymentServiceStub.setBalance(7799);
+        paymentServiceStub.setBalance("alice", 7799);
 
         assertThat(getCartHtml())
                 .contains("На счёте: 7799 руб.", "disabled=\"disabled\"", "Недостаточно средств на счёте");
@@ -66,7 +67,7 @@ class CheckoutIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void buy_shouldShowPaymentErrorAndKeepCart_whenPaymentDeclined() {
-        paymentServiceStub.setBalance(100);
+        paymentServiceStub.setBalance("alice", 100);
 
         String html = webTestClient.post().uri("/buy")
                 .exchange()
@@ -93,14 +94,14 @@ class CheckoutIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void buy_shouldWithdrawTotalAndRedirectToOrder_whenPaymentSucceeds() {
-        paymentServiceStub.setBalance(10_000);
+        paymentServiceStub.setBalance("alice", 10_000);
 
         webTestClient.post().uri("/buy")
                 .exchange()
                 .expectStatus().isSeeOther();
 
-        assertThat(paymentServiceStub.getPayments()).containsExactly(7800L);
-        assertThat(paymentServiceStub.getBalance()).isEqualTo(2200);
+        assertThat(paymentServiceStub.getPayments()).containsExactly(new Payment("alice", 7800));
+        assertThat(paymentServiceStub.getBalance("alice")).isEqualTo(2200);
         StepVerifier.create(orderRepository.count()).expectNext(1L).verifyComplete();
     }
 

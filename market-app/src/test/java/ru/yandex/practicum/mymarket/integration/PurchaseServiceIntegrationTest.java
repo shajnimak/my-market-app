@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import reactor.test.StepVerifier;
 import ru.yandex.practicum.mymarket.AbstractIntegrationTest;
 import ru.yandex.practicum.mymarket.PaymentServiceStub;
+import ru.yandex.practicum.mymarket.PaymentServiceStub.Payment;
 import ru.yandex.practicum.mymarket.dto.Checkout;
 import ru.yandex.practicum.mymarket.dto.ImageData;
 import ru.yandex.practicum.mymarket.dto.NewItem;
@@ -48,10 +49,10 @@ class PurchaseServiceIntegrationTest extends AbstractIntegrationTest {
     void buy_shouldPayCartTotal_persistOrderAndClearCart() {
         long itemId = createItem(1500);
 
-        StepVerifier.create(cartService.changeQuantity(itemId, CartAction.PLUS)
-                        .then(cartService.changeQuantity(itemId, CartAction.PLUS))
-                        .then(purchaseService.buy())
-                        .flatMap(orderService::getOrder))
+        StepVerifier.create(cartService.changeQuantity(alice.getId(), itemId, CartAction.PLUS)
+                        .then(cartService.changeQuantity(alice.getId(), itemId, CartAction.PLUS))
+                        .then(purchaseService.buy(alice.getId(), "alice"))
+                        .flatMap(orderId -> orderService.getOrder(alice.getId(), orderId)))
                 .assertNext(order -> {
                     assertThat(order.totalSum()).isEqualTo(3000);
                     assertThat(order.items()).singleElement()
@@ -64,23 +65,23 @@ class PurchaseServiceIntegrationTest extends AbstractIntegrationTest {
         StepVerifier.create(cartItemRepository.count())
                 .expectNext(0L)
                 .verifyComplete();
-        assertThat(paymentServiceStub.getPayments()).containsExactly(3000L);
-        assertThat(paymentServiceStub.getBalance()).isEqualTo(PaymentServiceStub.DEFAULT_BALANCE - 3000);
+        assertThat(paymentServiceStub.getPayments()).containsExactly(new Payment("alice", 3000));
+        assertThat(paymentServiceStub.getBalance("alice")).isEqualTo(PaymentServiceStub.DEFAULT_BALANCE - 3000);
     }
 
     @Test
     void buy_shouldKeepCartAndNotCreateOrder_whenPaymentDeclined() {
         long itemId = createItem(1500);
-        paymentServiceStub.setBalance(1499);
+        paymentServiceStub.setBalance("alice", 1499);
 
-        StepVerifier.create(cartService.changeQuantity(itemId, CartAction.PLUS).then(purchaseService.buy()))
+        StepVerifier.create(cartService.changeQuantity(alice.getId(), itemId, CartAction.PLUS).then(purchaseService.buy(alice.getId(), "alice")))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(InsufficientFundsException.class)
                         .hasMessage("Недостаточно средств: баланс 1499 руб., требуется 1500 руб."))
                 .verify();
 
         assertNothingBought();
-        assertThat(paymentServiceStub.getBalance()).isEqualTo(1499);
+        assertThat(paymentServiceStub.getBalance("alice")).isEqualTo(1499);
     }
 
     @Test
@@ -88,7 +89,7 @@ class PurchaseServiceIntegrationTest extends AbstractIntegrationTest {
         long itemId = createItem(1500);
         paymentServiceStub.setAvailable(false);
 
-        StepVerifier.create(cartService.changeQuantity(itemId, CartAction.PLUS).then(purchaseService.buy()))
+        StepVerifier.create(cartService.changeQuantity(alice.getId(), itemId, CartAction.PLUS).then(purchaseService.buy(alice.getId(), "alice")))
                 .expectError(PaymentServiceUnavailableException.class)
                 .verify();
 
@@ -97,24 +98,24 @@ class PurchaseServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void getCheckout_shouldCompareCartTotalWithBalanceFromPaymentService() {
-        paymentServiceStub.setBalance(3000);
+        paymentServiceStub.setBalance("alice", 3000);
 
-        StepVerifier.create(purchaseService.getCheckout(3000))
+        StepVerifier.create(purchaseService.getCheckout("alice", 3000))
                 .expectNext(new Checkout(Checkout.Status.AVAILABLE, 3000L))
                 .verifyComplete();
-        StepVerifier.create(purchaseService.getCheckout(3001))
+        StepVerifier.create(purchaseService.getCheckout("alice", 3001))
                 .expectNext(new Checkout(Checkout.Status.INSUFFICIENT_FUNDS, 3000L))
                 .verifyComplete();
 
         paymentServiceStub.setAvailable(false);
-        StepVerifier.create(purchaseService.getCheckout(3000))
+        StepVerifier.create(purchaseService.getCheckout("alice", 3000))
                 .expectNext(Checkout.unavailable())
                 .verifyComplete();
     }
 
     @Test
     void buy_shouldNotCreateOrder_whenCartEmpty() {
-        StepVerifier.create(purchaseService.buy())
+        StepVerifier.create(purchaseService.buy(alice.getId(), "alice"))
                 .expectError(EmptyCartException.class)
                 .verify();
         StepVerifier.create(orderRepository.count())
